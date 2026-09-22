@@ -1,15 +1,23 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { num } from "@/lib/format";
 
-/** 컨테이너 실제 폭(px)으로 그린다 — 모바일에서 글자가 같이 줄어들지 않게 */
+/**
+ * 컨테이너 실제 폭(px)으로 그린다. 모바일에서 글자가 같이 줄어들지 않게 한다.
+ * 첫 폭은 레이아웃 직후 동기적으로 읽는다. ResizeObserver 알림은 렌더 프레임에 실려 오므로
+ * 프레임이 멈춘 탭(백그라운드·미리보기 패널·인쇄)에서는 늦게 오거나 오지 않는다.
+ */
 function useWidth<T extends HTMLElement>(): [React.RefObject<T | null>, number] {
   const ref = useRef<T | null>(null);
   const [w, setW] = useState(0);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (el) setW(Math.round(el.getBoundingClientRect().width));
+  }, []);
   useEffect(() => {
     const el = ref.current;
-    if (!el) return;
+    if (!el || typeof ResizeObserver === "undefined") return;
     const ro = new ResizeObserver(([e]) => setW(Math.round(e.contentRect.width)));
     ro.observe(el);
     return () => ro.disconnect();

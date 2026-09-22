@@ -63,7 +63,7 @@ export async function getRates(now = new Date()): Promise<Rates> {
   } catch (e) {
     return {
       live: false, keyKind: "none", fetchedAt, rates: FALLBACK,
-      note: `ECOS 호출 실패 — 마지막 확인값을 표시합니다 (${e instanceof Error ? e.message : "오류"}).`,
+      note: `ECOS 호출 실패. 마지막 확인값을 표시합니다 (${e instanceof Error ? e.message : "오류"}).`,
     };
   }
 }

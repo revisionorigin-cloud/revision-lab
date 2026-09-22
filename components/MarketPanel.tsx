@@ -85,7 +85,7 @@ export function MarketPanel({ asset, onAsset, regions, code, band, market, loadi
           }}>
             {regions?.regions.map((s) => {
               const ok = regions.live || s.sgg.some((g) => snapSet.has(g.code));
-              return <option key={s.code} value={s.code} disabled={!ok}>{s.name}{ok ? "" : " — 인증키 필요"}</option>;
+              return <option key={s.code} value={s.code} disabled={!ok}>{s.name}{ok ? "" : " (인증키 필요)"}</option>;
             })}
           </select>
         </div>
@@ -93,7 +93,7 @@ export function MarketPanel({ asset, onAsset, regions, code, band, market, loadi
           <label htmlFor="sgg">시군구</label>
           <select id="sgg" value={code} onChange={(e) => onCode(e.target.value)}>
             {sido?.sgg.map((g) => (
-              <option key={g.code} value={g.code} disabled={!regions?.live && !snapSet.has(g.code)}>{g.name}{!regions?.live && !snapSet.has(g.code) ? " — 인증키 필요" : ""}</option>
+              <option key={g.code} value={g.code} disabled={!regions?.live && !snapSet.has(g.code)}>{g.name}{!regions?.live && !snapSet.has(g.code) ? " (인증키 필요)" : ""}</option>
             ))}
           </select>
         </div>
@@ -116,7 +116,7 @@ export function MarketPanel({ asset, onAsset, regions, code, band, market, loadi
           {market.meta.note && regions?.live && <div className="notice">{market.meta.note}</div>}
           <div className="kpis six">
             <Kpi label="전월세전환율 · 시장 역산" value={pctv(market.conv.ratePct, 2)}
-              sub={<>{market.conv.method === "implied" ? `전세·월세 쌍 ${num(market.conv.n)}건` : "표본 부족 — 기본값"}{legalCapPct !== null && <> · 법정 상한 {pctv(legalCapPct, 2)}</>}</>} />
+              sub={<>{market.conv.method === "implied" ? `전세·월세 쌍 ${num(market.conv.n)}건` : "표본 부족 · 기본값"}{legalCapPct !== null && <> · 법정 상한 {pctv(legalCapPct, 2)}</>}</>} />
             <Kpi label="환산월세 · 전용평당 월" value={`${num(k.effRentPerPy, 2)}만원`} sub={`신규 월세 ${num(k.effRentN)}건 중앙값`} />
             <Kpi label="매매 단가 · 전용평당" value={`${num(k.pricePerPy, 0)}만원`} sub={`매매 ${num(k.priceN)}건 중앙값 · 해제 ${num(market.counts.tradeCanceled)}건 제외`} />
             <Kpi label="총수익률 · Gross" value={pctv(k.grossYieldPct, 2)} sub={`단지별 수익률의 중앙값 · ${num(k.yieldN)}개 단지`} />
