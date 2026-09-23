@@ -110,24 +110,39 @@ export default function ProApp() {
       <section className="intro">
         <p className="eyebrow">Model Desk · Pro</p>
         <h1>기관투자자의 사업성 분석</h1>
-        <p className="intro-lead">임대주택 통매입, 오피스, 물류센터를 같은 엔진으로 검토합니다. 임대주택은 실거래가가 가정을 채우고 시장 대비 위치를 판정합니다. 오피스·물류는 렌트롤 기반 입력이며 공개 자료로 확인할 수 없는 항목은 그렇게 표시합니다.</p>
+        <p className="intro-lead">{isRental
+          ? "오피스텔·도시형생활주택 통매입입니다. 국토교통부 실거래가가 매입 단가·임대료·보증금·전환율을 채우고, 그 가정이 시장의 어디에 있는지 판정합니다."
+          : `${PRO_ASSET_LABEL[input.asset]}입니다. 임대료·관리비·운영비는 렌트롤과 관리비 수지에서 직접 입력합니다. 공개 실거래가에는 이 자산의 임대료가 없어 시장 대비 위치는 표시하지 않고, 금리만 한국은행에서 받아 옵니다.`}</p>
+        <div className="asset-tabs intro-tabs" role="tablist" aria-label="자산 유형">
+          {(Object.keys(PRO_ASSET_LABEL) as ProAsset[]).map((a) => <button key={a} type="button" role="tab" aria-selected={a === input.asset} className={a === input.asset ? "on" : ""} onClick={() => setAsset(a)}>{PRO_ASSET_LABEL[a]}</button>)}
+        </div>
         <div className="status">
-          <span className={`chip ${market?.meta.mode === "live" ? "live" : ""}`}>{market ? (market.meta.mode === "live" ? "실거래가 · OpenAPI 실시간" : "실거래가 · 국토부 공개 CSV 스냅샷") : "실거래가 · 불러오는 중"}</span>
+          {isRental && <span className={`chip ${market?.meta.mode === "live" ? "live" : ""}`}>{market ? (market.meta.mode === "live" ? "실거래가 · OpenAPI 실시간" : "실거래가 · 국토부 공개 CSV 스냅샷") : "실거래가 · 불러오는 중"}</span>}
+          {!isRental && <span className="chip">임대료·공실 · 렌트롤 직접 입력</span>}
           <span className={`chip ${rates?.live ? "live" : ""}`}>{rates ? (rates.live ? `금리 · ECOS 실시간 ${rates.fetchedAt}` : "금리 · 마지막 확인값") : "금리 · 불러오는 중"}</span>
         </div>
       </section>
 
-      <MarketPanel asset="offi" regions={regions} code={code} band={band} market={market} loading={loading} error={error} selectedKey={selectedKey} detail={detail} legalCapPct={legalCapPct}
-        onCode={(c) => { setSelectedKey(null); setCode(c); }} onBand={setBand} onPick={setSelectedKey}
-        onFillRegion={() => { if (market) { fill(market, null); document.getElementById("underwrite")?.scrollIntoView({ behavior: "smooth" }); } }}
-        onFillComplex={(c) => { if (market) { fill(market, c); document.getElementById("underwrite")?.scrollIntoView({ behavior: "smooth" }); } }} />
+      {isRental ? (
+        <MarketPanel asset="offi" regions={regions} code={code} band={band} market={market} loading={loading} error={error} selectedKey={selectedKey} detail={detail} legalCapPct={legalCapPct}
+          onCode={(c) => { setSelectedKey(null); setCode(c); }} onBand={setBand} onPick={setSelectedKey}
+          onFillRegion={() => { if (market) { fill(market, null); document.getElementById("underwrite")?.scrollIntoView({ behavior: "smooth" }); } }}
+          onFillComplex={(c) => { if (market) { fill(market, c); document.getElementById("underwrite")?.scrollIntoView({ behavior: "smooth" }); } }} />
+      ) : (
+        <section className="sec">
+          <SectionHead no="01" title="자료" lead="이 자산은 공개 실거래가로 임대료를 확인할 수 없습니다. 무엇을 어디서 가져와 넣는지 먼저 정리합니다." />
+          <dl className="src-grid">
+            <div><dt>임대료 · 관리비 · 보증금</dt><dd>매도자 렌트롤과 관리비 수지. 계약별 만기와 인상 조건을 함께 봅니다.</dd></div>
+            <div><dt>공실률</dt><dd>권역 임대 시장 조사(분기 보고서). 계약 만기 집중 연도에는 가정을 따로 둡니다.</dd></div>
+            <div><dt>운영비</dt><dd>직전 2년 실적 수지. 관리비 수입과 상계한 순액으로 넣습니다.</dd></div>
+            <div><dt>금리</dt><dd>{rates ? `한국은행 ECOS ${rates.live ? "실시간" : "마지막 확인값"} · 기준금리 ${num(rateOf(rates, "base") ?? 0, 2)}% · CD 91일 ${num(rateOf(rates, "cd91") ?? 0, 2)}%` : "한국은행 ECOS · 불러오는 중"}</dd></div>
+          </dl>
+        </section>
+      )}
 
       <section id="underwrite" className="sec">
-        <SectionHead no="02" title="언더라이팅" lead="입력값은 서버로 가지 않습니다. 시장에서 온 값에는 출처가, 비교 가능한 가정에는 시장 대비 위치가 붙습니다."
+        <SectionHead no="02" title="언더라이팅" lead={isRental ? "입력값은 서버로 가지 않습니다. 시장에서 온 값에는 출처가, 비교 가능한 가정에는 시장 대비 위치가 붙습니다." : "입력값은 서버로 가지 않습니다. 렌트롤 값을 그대로 넣으면 아래 결론과 한계선이 바로 갱신됩니다."}
           aside={<div className="btn-row"><button type="button" className="btn" onClick={onCsv}>현금흐름 CSV</button><button type="button" className="btn" onClick={() => window.print()}>인쇄 · PDF</button></div>} />
-        <div className="asset-tabs" role="tablist" aria-label="자산 유형">
-          {(Object.keys(PRO_ASSET_LABEL) as ProAsset[]).map((a) => <button key={a} type="button" role="tab" aria-selected={a === input.asset} className={a === input.asset ? "on" : ""} onClick={() => setAsset(a)}>{PRO_ASSET_LABEL[a]}</button>)}
-        </div>
 
         <div className="uw">
           <div className="uw-inputs">
@@ -166,7 +181,7 @@ export default function ProApp() {
             )}
             {!isRental && (
               <>
-                <p className="basis-note">{PRO_ASSET_LABEL[input.asset]} 모델은 RE:VISION Model Desk의 산식을 옮긴 것입니다. 임대료·관리비·운영비는 렌트롤과 관리비 수지에서, 공실은 권역 조사에서 가져와 직접 입력합니다. 공개 실거래가에는 이 항목이 없어 시장 대비 위치를 표시하지 않습니다.</p>
+                <p className="basis-note">{PRO_ASSET_LABEL[input.asset]} 모델은 RE:VISION Model Desk의 산식을 옮긴 것입니다. 시장 대비 위치 표시는 없습니다.</p>
                 <fieldset><legend>자산</legend>
                   <NumField label="매입가" unit="만원" value={input.office.price} step={10000} min={1} onChange={(v) => set("office", "price", v)} position={P("office.price")} derived={`${eok(input.office.price)} · 연면적 평당 ${num(input.office.price / input.office.gfaPy, 0)}만원`} />
                   <NumField label="연면적" unit="평" value={input.office.gfaPy} step={10} min={1} onChange={(v) => set("office", "gfaPy", v)} />

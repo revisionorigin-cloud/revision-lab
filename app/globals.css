@@ -407,6 +407,16 @@ select option { background: var(--navy-2); color: var(--ink); }
 .asset-tabs button { border: 0; background: transparent; color: var(--muted); padding: 10px 18px; font-size: 13px; border-right: 1px solid var(--rule-2); }
 .asset-tabs button:last-child { border-right: 0; }
 .asset-tabs button.on { background: var(--ink); color: var(--navy); font-weight: 600; }
+.intro .intro-tabs { margin: 22px 0 16px; }
+.src-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; border-top: 1px solid var(--rule); }
+.src-grid > div { padding: 16px 20px 16px 0; border-bottom: 1px solid var(--rule); border-right: 1px solid var(--rule); margin-right: 20px; }
+.src-grid > div:last-child { border-right: 0; margin-right: 0; }
+.src-grid dt { font-size: 12px; color: var(--muted); letter-spacing: .02em; margin-bottom: 8px; }
+.src-grid dd { margin: 0; font-size: 13.5px; line-height: 1.6; color: var(--ink); }
+@media (max-width: 860px) {
+  .src-grid { grid-template-columns: 1fr 1fr; }
+  .src-grid > div:nth-child(2n) { border-right: 0; margin-right: 0; }
+}
 .table-wrap.tight-top { margin-top: 10px; }
 @media (max-width: 860px) {
   .lab-grid { grid-template-columns: 1fr; }
