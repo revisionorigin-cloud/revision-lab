@@ -1,6 +1,15 @@
-# RE:LAB 디자인 스펙 v1
+# RE:LAB 디자인 스펙 v1.1
 
 기준: 2026-09-23 베이스라인(1440/390 캡처, globals.css 429행, 컴포넌트 10개). 채택 방향은 「에디토리얼 IC 메모」다. 여기에 「정밀 계기」의 상시 readout·키보드 모델·히트맵 읽기 줄·표 행 동작을, 「안내형」의 로딩·빈 상태·오류·덮어쓰기 확인·Home 핵심 6개·용어 사전·Market 인계 띠를 이식했다. lib/와 계산 로직은 손대지 않는다. 새 npm 의존성 없음. 토큰은 전부 :root. 사용자 노출 문구에 em-dash·느낌표·슬로건·최상급·권유 어투·아이콘·이모지·사진 금지.
+
+## 0. v1.1 변경 (2026-09-24, 사용자 결정): /market 페이지 폐지
+
+- 제품은 두 개다. **Model Desk Pro(기관)** 와 **Model Desk Home(개인)**. 별도 Market Desk 페이지(/market)는 두지 않는다. 시세 내용은 두 도구의 01 시장 절(MarketPanel)에 이미 들어 있으므로 그 안에서 완결한다.
+- 삭제: app/market/page.tsx, components/MarketApp.tsx. app/market.css는 만들지 않는다. next.config.ts에 /market → /pro 영구 리다이렉트(쿼리 유지)를 둔다. /api/market, /api/complex, /api/desk 는 그대로.
+- Header 제품 nav는 2개(MODEL DESK PRO · 기관 / MODEL DESK HOME · 개인). 티커는 링크가 아니다.
+- 랜딩: desk-index는 Pro·Home 두 행뿐이고 Market 띠는 없다. desk-strip의 열은 자산에 따라 링크한다(오피스텔 열 → /pro?asset=offi&code=…, 아파트 열 → /home?asset=apt&code=…). 3단계 문구의 첫 단계 「지역을 고른다」는 각 도구의 01 시장 절을 가리킨다.
+- 시세 인계: Pro 01 시장 절 aside에 「이 조건으로 Home 검토」, Home 01 시장 절 aside에 「이 조건으로 Pro 검토」 링크를 둔다(asset·code·band·key 쿼리 전달). 단지 상세 머리에도 같은 교차 링크 1개를 둔다. 구 §5.2의 #handoff 띠·「지역 시세」 절·MarketApp 규격은 폐기한다.
+- 이 문서에서 /market, Market Desk, MarketApp 을 언급하는 나머지 문장은 이 절이 우선한다. 수용 기준 9·20·21은 아래 개정본을 따른다.
 
 ## 1. 원칙
 
@@ -92,9 +101,9 @@
 ## 4. 공통 컴포넌트 규격
 
 ### 4.1 Header (2단 마스트헤드, sticky top 0, z 20, --surface-2 + backdrop-filter blur 14px)
-- 1단 `.mast` 56px. 좌 `<Link class="brand-lock" href={BRAND_HOME}>` = 워드마크(Jost 14px .3em, RE 600 / 콜론 --gold-colon 600 / VISION 250) + `<i class="brand-bar">`(1×12px --rule-2, margin 0 12px) + `<span class="brand-sub">LAB</span>`(Jost 11px .3em --gold). 우 `<a href="/market"><dl class="ticker" aria-label="금리">` 항목 `<div><dt>기준금리</dt><dd>3.00<small>%</small></dd></div>`, dt Pretendard 11px --muted, dd Mono 12px, `title="{label} · {asOf}"`, 끝에 `<i class="ticker-asof">ECOS 2026-09-22</i>`(11px --faint). rates는 layout.tsx 서버 fetch로 SSR. live=false면 `.ticker.stale::before { content: "마지막 확인값" }` --warn. rates null이면 「금리 불러오는 중」.
-- 2단 `.subnav` 40px, 같은 sticky 컨테이너, border-bottom 1px --rule. 좌 제품 nav 3개 `<a><b>MARKET DESK</b><span>시세</span></a>` / `MODEL DESK PRO · 기관` / `MODEL DESK HOME · 개인`, b Jost 11px .26em --ink-2, span Pretendard 11px --muted, 가로 나란히 gap 6px. 활성 `aria-current="page"`, b --ink, 밑줄 1px --gold. 중앙 `.subnav-sec`(Pro 01~04, Home 01~02, Market 없음): Jost 11px .22em --muted, IntersectionObserver(rootMargin -40% 0px -55% 0px)로 `.on`은 --gold-hi. 그 옆 `.subnav-basis`(12px --muted, max-width 22em ellipsis, title 전문) 「영등포구 오피스텔 시장값 · 120세대 · 수정됨」(Market은 「영등포구 · 오피스텔 · 전체 면적 · 선택 없음」). 우 `.ro-group`(Pro·Home만): `.tone`(2×16px, ok/warn/neg, 판정 전 --rule-2) + `.ro` 3개 `<a href="#..."><i>Levered IRR</i><b>0.35%</b></a>`, i Pretendard 11px --muted, b Mono 15px --ink tnum, min-width 88px 우정렬. Pro: Levered IRR · 최소 DSCR · 최대 매입 단가. Home: 월 현금 · 5년 뒤 · 본전 상승률. 시장값 로딩 전 b는 DASH + `aria-busy`. Market에는 readout을 두지 않는다(바로 아래 KPI 6칸과 중복).
-- ≤1080: `.subnav-basis` 숨김(같은 문구가 .memo-basis에 있음). ≤860: 절 내비·readout 숨김(하단 바가 대체), 제품 nav 가로 스크롤(scrollbar-width none), 항목 padding 10px 0(44px 탭). ≤600: 티커는 기준금리 1항목만. 「RE:LAB」 nav 항목과 「Lab」 중복 표기 제거, 죽은 `.brand*` 규칙 삭제. 인쇄에서 `.mast`·`.subnav` 숨김.
+- 1단 `.mast` 56px. 좌 `<Link class="brand-lock" href={BRAND_HOME}>` = 워드마크(Jost 14px .3em, RE 600 / 콜론 --gold-colon 600 / VISION 250) + `<i class="brand-bar">`(1×12px --rule-2, margin 0 12px) + `<span class="brand-sub">LAB</span>`(Jost 11px .3em --gold). 우 `<dl class="ticker" aria-label="금리">`(링크 아님) 항목 `<div><dt>기준금리</dt><dd>3.00<small>%</small></dd></div>`, dt Pretendard 11px --muted, dd Mono 12px, `title="{label} · {asOf}"`, 끝에 `<i class="ticker-asof">ECOS 2026-09-22</i>`(11px --faint). rates는 layout.tsx 서버 fetch로 SSR. live=false면 `.ticker.stale::before { content: "마지막 확인값" }` --warn. rates null이면 「금리 불러오는 중」.
+- 2단 `.subnav` 40px, 같은 sticky 컨테이너, border-bottom 1px --rule. 좌 제품 nav 2개 `<a><b>MODEL DESK PRO</b><span>기관</span></a>` / `<a><b>MODEL DESK HOME</b><span>개인</span></a>`, b Jost 11px .26em --ink-2, span Pretendard 11px --muted, 가로 나란히 gap 6px. 활성 `aria-current="page"`, b --ink, 밑줄 1px --gold. 중앙 `.subnav-sec`(Pro 01~04, Home 01~02): Jost 11px .22em --muted, IntersectionObserver(rootMargin -40% 0px -55% 0px)로 `.on`은 --gold-hi. 그 옆 `.subnav-basis`(12px --muted, max-width 22em ellipsis, title 전문) 「영등포구 오피스텔 시장값 · 120세대 · 수정됨」. 우 `.ro-group`(Pro·Home만): `.tone`(2×16px, ok/warn/neg, 판정 전 --rule-2) + `.ro` 3개 `<a href="#..."><i>Levered IRR</i><b>0.35%</b></a>`, i Pretendard 11px --muted, b Mono 15px --ink tnum, min-width 88px 우정렬. Pro: Levered IRR · 최소 DSCR · 최대 매입 단가. Home: 월 현금 · 5년 뒤 · 본전 상승률. 시장값 로딩 전 b는 DASH + `aria-busy`.
+- ≤1080: `.subnav-basis` 숨김(같은 문구가 .memo-basis에 있음). ≤860: 절 내비·readout 숨김(하단 바가 대체), 제품 nav 2개 나란히, 항목 padding 10px 0(44px 탭). ≤600: 티커는 기준금리 1항목만. 「RE:LAB」 nav 항목과 「Lab」 중복 표기 제거, 죽은 `.brand*` 규칙 삭제. 인쇄에서 `.mast`·`.subnav` 숨김.
 - body 첫 자식 `<a class="skip" href="#main">본문으로</a>`, 각 페이지 `<main id="main" tabIndex={-1}>`.
 
 ### 4.2 SectionHead
@@ -179,15 +188,16 @@
 ## 5. 페이지 레이아웃
 
 ### 5.1 / (랜딩)
-- 데스크톱 1440: [헤더 96] → 히어로(padding 64px 0 40px): 눈썹 「RE:LAB · MODELLING」 → display h1 「부동산 사업성 분석 도구」 → lead 「기관의 통매입 검토와 개인의 집 한 채 검토. 같은 실거래가와 금리에서 출발해 각자의 언어로 답합니다.」 → 라우팅 문장 15px 「펀드·리츠·법인의 통매입 검토는 Pro, 내 집 한 채는 Home, 시세만 보려면 Market.」 → `.gold-line` 330px → 기준일 12px 「실거래가 2026-09 스냅샷 · 금리 ECOS 2026-09-22」 → `.desk-strip`(서버 컴포넌트 DeskStrip, /api/desk 4지역 × 매매 단가·환산월세·총수익률, 4열 .kpi, 각 열 `/market?asset&code` 링크, 캡션 「표본 지역 4곳 · 국토교통부 실거래가」, 홈페이지 병합 시 ticker로 재사용하도록 경계 독립) → `.desk-index`(border-top --rule-2, 행 2: 「01 | Model Desk Pro · 기관투자자 · 운용역 | 설명 15px --ink-2 | Levered IRR · DSCR · 한계선 역산 · 검산 | 열기」, 「02 | Model Desk Home · 개인 · 집 한 채 | … | 대출 한도 · 월 현금 · 5년 뒤 · 본전 상승률 | 열기」, 행 전체 링크, hover/active/focus --surface-1; 3행 얇은 띠 「Market Desk · 시세만 볼 때 · 오피스텔·아파트 · 열기」) → `.steps` 3단(01 지역을 고른다 / 02 가정을 고친다 / 03 결론과 검산을 본다, /pro#market 등 링크) → 예시 결과 2단(좌 Home .answers 4칸, 우 Pro .memo 축약, 정적 스냅샷, 캡션 「예시 · 기본 가정 · 2026-09 시세 · 가정을 바꾸면 결과가 바뀝니다」, P2) → `.fine` 「세 도구는 같은 실거래가·금리 데이터와 같은 계산식을 씁니다. 결과는 입력한 가정을 계산한 값이며 투자 권유가 아닙니다.」 → 푸터. `main { min-height: calc(100vh - 96px - 200px) }`.
-- 첫 화면 1440×900: 헤더, 히어로 전체, 골드 라인, 기준일, desk-strip, desk-index 첫 행(Pro). sticky는 헤더뿐, 접힘 없음.
+- 데스크톱 1440: [헤더 96] → 히어로(padding 64px 0 40px): 눈썹 「RE:LAB · MODELLING」 → display h1 「부동산 사업성 분석 도구」 → lead 「기관의 통매입 검토와 개인의 집 한 채 검토. 같은 실거래가와 금리에서 출발해 각자의 언어로 답합니다.」 → 라우팅 문장 15px 「펀드·리츠·법인의 통매입 검토는 Pro, 내 집 한 채는 Home. 시세는 두 도구의 첫 절에 있습니다.」 → `.gold-line` 330px → 기준일 12px 「실거래가 2026-09 스냅샷 · 금리 ECOS 2026-09-22」 → `.desk-strip`(서버 컴포넌트 DeskStrip, /api/desk 4지역 × 매매 단가·환산월세·총수익률, 4열 .kpi, 각 열은 자산에 따라 `/pro?asset=offi&code=…` 또는 `/home?asset=apt&code=…` 링크, 캡션 「표본 지역 4곳 · 국토교통부 실거래가」, 홈페이지 병합 시 ticker로 재사용하도록 경계 독립) → `.desk-index`(border-top --rule-2, 행 2: 「01 | Model Desk Pro · 기관투자자 · 운용역 | 설명 15px --ink-2 | Levered IRR · DSCR · 한계선 역산 · 검산 | 열기」, 「02 | Model Desk Home · 개인 · 집 한 채 | … | 대출 한도 · 월 현금 · 5년 뒤 · 본전 상승률 | 열기」, 행 전체 링크, hover/active/focus --surface-1) → `.steps` 3단(01 지역을 고른다 / 02 가정을 고친다 / 03 결론과 검산을 본다, /pro#market 등 링크) → 예시 결과 2단(좌 Home .answers 4칸, 우 Pro .memo 축약, 정적 스냅샷, 캡션 「예시 · 기본 가정 · 2026-09 시세 · 가정을 바꾸면 결과가 바뀝니다」, P2) → `.fine` 「세 도구는 같은 실거래가·금리 데이터와 같은 계산식을 씁니다. 결과는 입력한 가정을 계산한 값이며 투자 권유가 아닙니다.」 → 푸터. `main { min-height: calc(100vh - 96px - 200px) }`.
+- 첫 화면 1440×900: 헤더, 히어로 전체, 골드 라인, 기준일, desk-strip, desk-index 두 행(Pro·Home). sticky는 헤더뿐, 접힘 없음.
 - 모바일 390: 히어로 padding 40px 0 24px, h1 34px, lead 4줄 이내, desk-strip 2×2, desk-index 세로 스택(번호·제목·대상·설명·열기), Pro 행이 812px 폴드 안. 예시 결과 세로.
 - 푸터(전 페이지 공통): 중앙 핸드오프 §4 풀 시그니처(워드마크 28px, 룰 210/1.5px + 130/1px, 태그라인 9px .52em 골드 그라데이션, 라디얼 글로우 rgba(201,175,127,.11) 60% 이내) → 3열 12px --muted 「주식회사 리비전」 / 「데이터 · 국토교통부 실거래가 2026-09 · 한국은행 ECOS 2026-09-22」 / 「정보 제공 도구이며 투자 권유가 아닙니다」. `.foot { border-top: 0 }`.
 
-### 5.2 /market
-- 데스크톱: 헤더(subnav: 제품 nav + basis 「영등포구 · 오피스텔 · 전체 면적 · 선택 없음」, readout 없음) → 히어로: 눈썹 「MARKET DESK」, h1 「실거래가 시세 · 시군구와 단지」, lead 「국토교통부 실거래가에서 임대료, 매매가, 전월세전환율, 총수익률, 갱신 행태를 계산합니다. 모든 지표에 표본 수와 제외 기준, 조회일이 붙습니다.」, `.gold-line`, status 줄 → 절(번호 없음) h2 「지역 시세」 + aside 링크 2개 「이 조건으로 Pro 검토」「Home 검토」(`/pro?asset&code&band&key`) → 자산 세그먼트(role group, 아파트·오피스텔 순) → controls(시도·시군구 select, 면적 seg) → KPI 6 + facts 인라인 → 추이 차트 2단(펼침) → 산점도 → `#complexes` 단지 찾기 + 표 → 단지 상세(`.detail` 테두리 제거, border-top --rule-2, h3 20px, head 우측 「이 단지로 Pro 검토 / Home 검토」) → `#handoff` 띠(border-top --rule-2, padding 32px 0): 「이 조건으로 검토」 13px + 버튼 「이 조건으로 Pro 검토」「Home 검토」(asset·code·band·key 전달) → 푸터.
-- 첫 화면: 헤더, 히어로, 절 제목, 컨트롤, KPI 6칸 상단. sticky는 헤더뿐. 접힘 없음.
-- 모바일: controls 2열 grid(시도·시군구 한 줄, 면적 전폭), KPI 2열, 차트 세로, 표 6열 우선 + 첫 열 sticky, handoff 버튼 전폭 2개. mbar 없음.
+### 5.2 시세(Market) 내용의 배치 (v1.1: /market 페이지 없음)
+- 시세는 Pro와 Home의 01 시장 절(MarketPanel compact)에서 완결한다: 자산 세그먼트(Home만, 아파트·오피스텔 순) → controls(시도·시군구 select, 면적 seg) → KPI 6(Pro는 산식 sub, Home은 `audience="home"` 라벨 맵) + facts 인라인 → `<details class="mk-detail">` 안에 추이 차트 2단·산점도·단지 찾기·표(단지 선택 시 open) → 단지 상세(details 밖, border-top --rule-2, h3 20px).
+- 절 머리 aside: 채우기 버튼(라벨 분기 §4.6) 옆에 교차 링크 1개. Pro는 「이 조건으로 Home 검토」(`/home?asset&code&band&key`), Home은 「이 조건으로 Pro 검토」(`/pro?asset=offi&code&band&key`, Home이 아파트 탭이면 asset은 offi로 바꾸고 key는 생략). 단지 상세 머리 우측에도 같은 교차 링크 1개.
+- /market 요청은 next.config.ts `redirects()`로 /pro 에 308 리다이렉트(쿼리 유지). components/MarketApp.tsx, app/market/page.tsx 삭제. app/market.css 없음.
+- 모바일: controls 2열 grid(시도·시군구 한 줄, 면적 전폭), KPI 2열, 표 6열 우선 + 첫 열 sticky. 별도 mbar 없음(도구의 mbar가 있음).
 
 ### 5.3 /pro
 - 데스크톱: 헤더(subnav: 01 시장 · 02 언더라이팅 · 03 한계선 · 04 검증, basis, tone + Levered IRR · 최소 DSCR · 최대 매입 단가) → 히어로(눈썹 「MODEL DESK · PRO」, h1 「기관투자자의 사업성 분석」, lead 1문장, 자산 탭 role tablist + 방향키 + aria-controls="underwrite", status 줄) → **결론 memo**(§4.7) → 01 시장 SectionHead(aside 채우기 버튼, 라벨 분기 §4.6) + controls + KPI 6(sub 산식) + facts + `<details class="mk-detail"><summary>시장 상세 <span>추이 · 단지별 비교 · 단지를 고르려면 펼치기</span></summary>`(추이 2·산점도·표, 단지 선택 시 open) + 단지 상세(details 밖) → 02 언더라이팅 SectionHead(aside 비움, lead 「입력값은 서버로 가지 않습니다…」) + `.uw`(400px | minmax(0,1fr), gap 48): 좌 `#inputs`(basis 행 → 자산(세대수·전용면적·매입 단가) → 취득(취득세 Seg + custom + 부대비, 두 탭 모두 자산 뒤) → 임대 5 → `.adv` 비용 「운영비 15% · 적립 2% · 보유세 0.25%」 → 자본구조(LTV·지표 select·가산금리·상환 방식·상환 기간 펼침, `.adv` 우선주 「우선주 없음」) → 매각(보유기간·Exit Cap 펼침, `.adv` 매각 비용·과세 「매각비용 1% · 도관」) → `.fine` 단축키), 우 `.uw-results`(static): `.uw-summary`(sticky) → facts 4(매각 순수령은 현금흐름 h3 옆) → notes → h3 조달과 사용(StackBar) → h3 보통주 현금흐름(CfBars) → details 연도별 현금흐름표(「항목 (억원)」, 부호는 크기만, 전 행 2자리) → `.btn-row`(현금흐름 CSV · 인쇄 · PDF) → 03 한계선(읽기 전용): limits 3열(`.limit-key` 12px --muted + `.limit-value` num-lg, 3열은 「최대 매입 단가 2,582만원/평」, 목표 IRR은 표시만) + `.grid2.heats`(히트맵 3 + 읽는 법) → 04 검증(산식표 + checks 2열) → 푸터.
@@ -256,7 +266,7 @@
 
 ## 7. 구현 계획
 
-공통 규칙: 묶음 A가 먼저 끝난다. B·C·D는 A가 만든 토큰과 컴포넌트 API만 쓰고 globals.css를 수정하지 않는다(페이지 전용 규칙은 app/pro.css, app/home.css, app/market.css). lib/ 수정 없음, npm 의존성 추가 없음.
+공통 규칙: 묶음 A가 먼저 끝난다. B·C·D는 A가 만든 토큰과 컴포넌트 API만 쓰고 globals.css를 수정하지 않는다(페이지 전용 규칙은 app/pro.css, app/home.css). lib/ 수정 없음, npm 의존성 추가 없음.
 
 ### 묶음 A · 디자인 시스템과 공통 컴포넌트
 파일: app/globals.css, app/layout.tsx, app/page.tsx, components/Header.tsx, components/fields.tsx, components/charts.tsx. 신규 허용: components/glossary.ts, components/DeskStrip.tsx(서버 컴포넌트), app/icon.svg.
@@ -264,7 +274,7 @@
   1. globals.css :root 토큰 전면 교체(§2), 타입·간격 토큰으로 반 픽셀 전부 치환, 반경 0·그림자 0, `.sec`·legend·th·select·btn 괘선 하향, `.sec-head::after`, `.kicker`·`.u`·`.sr-only`·`.skip`·`.print-only` 신설, 포커스 링·reduced-motion, --faint 상향, --warn 분리, 입력 글자색 --ink, `.cfarea .pos`·`.seg-eq`·`.pt-a`·nav 활성·카드 키워드 골드 제거, 죽은 `.brand*`·중복 `.on`·`.chip::before`·`.tally::before`·원형 `.sw` 삭제, 인쇄 토큰 블록.
   2. globals.css 신설 블록: `.mast`·`.subnav`(2단, 모바일 2행·가로 스크롤), `.ro-group`·`.ro`·`.tone`, `.memo`(v-ok/warn/neg/idle)·`.memo-*`·`.answers`, `.uw-summary`(sticky)·`.uw-results` static, `.field-meta`·`.field-err`·`.field-input` surface, `.adv summary span`, `.desk-index`·`.desk-strip`·`.steps`, `.term`·`.def`·`.flip`, `.skel`·`.empty`·`.notice`, `.mbar`·`.mbar-ro`·`.mbar-go`·`.mbar-sheet`, `.row-act`, `.heat-read`·`td.below`·`td.risk`, `.checks` 배지, 푸터 시그니처, 모바일 44px 탭 타겟·입력 16px·controls 2열·scroll-padding-bottom.
   3. layout.tsx: 폰트 링크를 핸드오프 §1 문자열로(Jost 가변 100..700, Plex Mono 400;500), `getRates()` 서버 fetch → `<Header rates>`, skip 링크, 푸터 2단(시그니처 + 3열), `title.template "%s · RE:LAB"`, description에서 「실시간」 제거.
-  4. Header.tsx: `Header({ rates })` 2단 마스트(brand-lock + BRAND_HOME 상수, dl 티커 + % + title + asof + stale + /market 링크, 제품 nav 3개 2층 라벨 + aria-current). `export SubNav({ items: {id, no, label}[], basis?: string, readouts?: {label, value, href}[], tone?: "ok"|"warn"|"neg"|null })` 절 내비 IntersectionObserver 포함. NAV에서 "/" 항목 제거.
+  4. Header.tsx: `Header({ rates })` 2단 마스트(brand-lock + BRAND_HOME 상수, dl 티커 + % + title + asof + stale (링크 없음), 제품 nav 2개(PRO·HOME) 2층 라벨 + aria-current). `export SubNav({ items: {id, no, label}[], basis?: string, readouts?: {label, value, href}[], tone?: "ok"|"warn"|"neg"|null })` 절 내비 IntersectionObserver 포함. NAV에서 "/" 항목 제거.
   5. fields.tsx 헬퍼: `neg(s)`, `tidy(s)`, `splitUnit(s) → {value, unit}`, `wonKr(manwon)`, `scrollMode()`, `fmtRo(v, kind)`.
   6. fields.tsx `Kpi({ label, value, unit?, sub?, tone?, term?, compact? })`: 단위 `.u` 분리, sub는 항상 렌더.
   7. fields.tsx `SectionHead({ no?, title, lead?, aside? })`: no 없으면 번호 미렌더.
@@ -275,7 +285,7 @@
   12. charts.tsx P0: `Heat({ ..., legend: {pos, neg}, threshold, fmtBase, readLabel(r, c, v), centerBase? })` 토큰 색·below·risk·scope·caption·heat-read·로빙 tabIndex, tick 11px Mono, 축 라벨 제거, `.chart` overflow 안전망.
 - P1
   13. charts.tsx `CfBars({ op, acq, sale, labels })` 2계열 + role list, `StackBar` 18px·라벨·해치 톤, LineChart 점선 저표본·마지막 값 라벨·포인터·키보드·aria-live, Scatter 히트 원·로빙 tabIndex·aria-pressed, TimeScatter 형태 분리·최근접 탐색, beforeprint·orientationchange 재측정.
-  14. DeskStrip.tsx 서버 컴포넌트(/api/desk 4지역, 각 열 /market 링크, 캡션) + page.tsx 삽입.
+  14. DeskStrip.tsx 서버 컴포넌트(/api/desk 4지역, 각 열은 자산별로 /pro 또는 /home 링크(§0), 캡션) + page.tsx 삽입.
   15. globals.css 모바일 표: 열 우선순위·첫 열 sticky·스크롤 그림자, 히트맵 6열, cfbars `.many`, `.def` 인라인 모드.
 - P2
   16. app/icon.svg를 RE: 서브마크(배경 #070C17, RE 아이보리, 콜론 골드)로 교체, 청록 색 저장소 제거.
@@ -311,18 +321,18 @@
 - P2
   9. app/home/page.tsx metadata, Term 배치 점검, 기준금리 참고 링크.
 
-### 묶음 D · components/MarketPanel.tsx + components/MarketApp.tsx (+ app/market.css, components/useMarket.ts, app/api/desk/route.ts, app/market/page.tsx)
+### 묶음 D · components/MarketPanel.tsx + components/useMarket.ts + app/api/desk/route.ts + next.config.ts (삭제: components/MarketApp.tsx, app/market/page.tsx)
 - P0
   1. MarketPanel props 추가: `compact?: boolean`, `audience?: "pro"|"home"`, `sectionNo?: string`(빈 값이면 미렌더), `fillLabel?: string`, `fillConfirm?: ReactNode`, `links?: {pro: string, home: string}`, `onRetry`. compact면 추이·산점도·표를 `details.mk-detail`로, selectedKey면 open, 단지 상세는 밖.
   2. KPI `unit` 분리, Pro sub 산식·Home 라벨 맵, facts 라벨 측정 대상 + 분모 span, 자릿수 규칙(비중 0, 변화율 1).
   3. 표: caption·scope·`aria-sort`·`{key, dir}` 토글·↕ 글리프·단위 2행 small·그룹 열 border-left·`.row-act` 「선택」·table-foot 안내·빈 표 문구·모바일 열 클래스. 상태 칩 → `.status` 텍스트. 자산 스위치 role=group + aria-pressed, 순서 아파트·오피스텔.
   4. 로딩·오류: `.skel`(KPI 6·표 6행·차트 180), 갱신 중 `.dim` + aria-busy + status, 오류 notice + [다시 시도] + small 원문, `detailError`(useMarket 반환 추가), regions null 문구, 표본 부족 `.empty` + band=all 링크, 문구 2패턴.
-  5. MarketApp: h1·lead 교체(개발 메타 삭제), `sectionNo=""`, h2 「지역 시세」, aside 링크 2개 + 단지 상세 head 링크 2개 + `#handoff` 띠(asset·code·band·key), `.gold-line`.
+  5. /market 폐지: components/MarketApp.tsx 와 app/market/page.tsx 삭제, next.config.ts 에 `/market` → `/pro` 308 리다이렉트(쿼리 유지). MarketPanel `links` prop으로 절 머리 aside 교차 링크 1개(Pro→Home / Home→Pro)와 단지 상세 head 교차 링크 1개를 렌더(§5.2). 삭제 후 `npx tsc`·`next build`가 깨끗해야 한다.
 - P1
   6. app/api/desk/route.ts: delta null → 빈 문자열, 0 → 「0.0%p」, 방향은 dir 필드만, em-dash(U+2014)·「▲▼」 글리프 제거.
   7. 산점도 figcaption 축 라벨, 「신규 − 갱신」 sub 정의, 열 title 산식.
 - P2
-  8. app/market/page.tsx metadata, Term 배치 점검.
+  8. Term 배치 점검.
 
 ## 8. 수용 기준 (스크린샷 검증)
 
@@ -334,7 +344,7 @@
 6. KPI 「13.26만원」 확대 캡처에서 「만원」이 숫자의 절반 이하 크기, Pretendard, --ink-2로 렌더된다.
 7. /pro 결과열을 1,000px 스크롤한 캡처에서 상단 고정은 헤더 2단과 요약(headline 1줄 + KPI 4)뿐이고, 조달과 사용·현금흐름은 흐름대로 지나가 있다. 고정 영역 합계 260px 이하.
 8. /pro 어느 스크롤 위치 캡처에도 서브내비 우측에 tone 막대와 Levered IRR · 최소 DSCR · 최대 매입 단가 3개 값이 있고, 그 값이 memo·KPI와 같은 숫자다. 현재 절만 --gold-hi다. 러닝헤드는 없다.
-9. 390px 헤더 캡처에 워드마크·LAB·기준금리 1항목·제품 nav 3개(2층 라벨)가 모두 보이고 scrollWidth = 390이다.
+9. 390px 헤더 캡처에 워드마크·LAB·기준금리 1항목·제품 nav 2개(2층 라벨)가 모두 보이고 scrollWidth = 390이다.
 10. 390px /pro 하단 바가 네이비 반투명에 골드 헤어라인 상단 1줄, 아이보리 Mono 수치이며, 좌측 readout 탭 시 시트에 headline·KPI 4·기준 문구·절 내비·「가정 고치기」가 나타난다. #inputs가 보이는 동안 우측 버튼이 「결론 보기」, 아니면 「가정 고치기 ↓」다.
 11. 표 헤더에 정렬 가능 열마다 「↕」가 보이고 활성 열은 「↓」 또는 「↑」다. 환산월세·매매단가 헤더 아래 단위 2행이 있다. 행 hover 시 마지막 열에 「선택」이 나타난다.
 12. 연도별 현금흐름표의 (−) 행에 음수 부호가 없고 전 행 소수 2자리, 첫 열 헤더가 「항목 (억원)」이다.
@@ -345,8 +355,8 @@
 17. 지표명(예: Levered IRR, 전월세전환율)에 절당 1회 점선 밑줄이 있고, hover 캡처에 --navy-2 불투명 바탕·1px 테두리·그림자 없는 한 줄 정의가 나타난다. 물음표·아이콘이 없다.
 18. 지역을 바꾸는 순간 캡처에 KPI 6칸·표 6행 자리 스켈레톤이 보이고, 오류 강제 시 「실거래가를 불러오지 못했습니다 … [다시 시도]」와 원문 small이 보인다. 표본 부족 시 「면적 구간을 전체로 [바꾸기]」 링크가 있다.
 19. /home 02 입력열에 펼쳐진 컨트롤이 6개이고 `details.adv` summary 4개가 각각 현재값 문장(「집과 규제 · 84.9㎡ · 수도권 (비규제) · 1주택 요건 충족」 등)을 보여 준다. /pro는 자본구조 필드가 펼쳐져 있다.
-20. /market 하단에 「이 조건으로 Pro 검토 / Home 검토」 버튼 2개가 있고, 누른 뒤 /pro URL에 asset·code·band가 붙으며 서브내비 basis가 같은 지역을 표시한다.
-21. 랜딩 1440 캡처에 눈썹·display h1·골드 라인·기준일·desk-strip 4열·Pro/Home 두 행·Market 띠·3단계·푸터 시그니처가 모두 있고 하단 40% 빈 공간이 없다. 「브랜드 토큰」「/api/desk」「실시간」「권합니다」 문장이 어느 페이지에도 없다.
+20. /pro 01 시장 절 머리에 「이 조건으로 Home 검토」, /home 01 시장 절 머리에 「이 조건으로 Pro 검토」 링크가 있고, 누른 뒤 URL에 asset·code·band가 붙으며 서브내비 basis가 같은 지역을 표시한다. /market 으로 들어가면 /pro 로 리다이렉트된다. 사이트 어디에도 Market Desk 라는 제품명과 /market 링크가 없다.
+21. 랜딩 1440 캡처에 눈썹·display h1·골드 라인·기준일·desk-strip 4열·Pro/Home 두 행·3단계·푸터 시그니처가 모두 있고 하단 40% 빈 공간이 없다. 「브랜드 토큰」「/api/desk」「실시간」「권합니다」 문장이 어느 페이지에도 없다.
 22. 화면 어디에도 원형 점 마크(상태 칩·집계·범례)와 아이콘이 없고, 사용자 노출 문자열에 em-dash(U+2014)·느낌표가 없다(grep 0건). 음수 부호는 전부 U+2212다.
 23. 인쇄 미리보기(Chrome, 배경 그래픽 끔)에서 흰 바탕에 검정 글자로 메모 블록·KPI·표·히트맵이 읽히고, 접힌 현금흐름표가 펼쳐져 있으며, 머리줄에 지역·자산·조회일이 있고 헤더·하단 바·버튼이 없다.
 24. Tab 키만으로 /pro를 진행한 캡처 시퀀스에서 산점도가 원 하나에서만 멈추고, 세그먼트는 그룹당 한 번만 멈추며, 포커스 링이 아이보리 채움 버튼 위에서도 골드 링 + 네이비 띠로 보인다.
@@ -378,7 +388,7 @@
 | 32 | A-P0-7 `SectionHead no` + D-P0-5 |
 | 34, 141 | C-P0-5 |
 | 35, 39, 73, 83, 124 | B-P0-9, C-P0-7 (`.mbar` 2버튼·시트·IO 토글·단위·aria-label) + B-P0-1 목표 IRR memo 인라인 |
-| 36, 95, 129, 151 | A-P0-11 (page.tsx), B-P0-9 (ProApp 184행), D-P0-5 (MarketApp lead) |
+| 36, 95, 129, 151 | A-P0-11 (page.tsx), B-P0-9 (ProApp 184행), D-P0-5 (/market 폐지) |
 | 40 | A-P0-9 `sign` prop (상승/하락 Seg, 절대값 입력) |
 | 41 | B-P0-5, C-P0-4 (`fillSnap`·`editedKeys`·필드별 되돌리기; lib Provenance는 문자열 유지) |
 | 43, 87, 140, 130 | C-P0-3 (상승률 기본 2%, 한도 풀이 행, 규제 안내, LTV·DSR 풀이) |
@@ -411,7 +421,7 @@
 | 109 | A-P0-1 인쇄 토큰 + B-P1-10, C-P1-8 (beforeprint, print-only) |
 | 118 | D-P0-3 (Market 자산 스위치 group), B-P1-10 (Pro 탭 방향키 + tabpanel) |
 | 123, 128, 137, 146 | D-P0-4 (`.dim` .6·status·detailError·오류 문구·로딩 2패턴) + B/C 로딩 문구 |
-| 125, 145, 153, 154 | A-P0-3·4 (dl 티커 SSR·%·asof·stale·/market 링크) |
+| 125, 145, 153, 154 | A-P0-3·4 (dl 티커 SSR·%·asof·stale, 링크 없음) |
 | 131 | D-P0-2 `audience="home"` 라벨 맵 + C-P1-8 |
 | 133 | C-P0-5 (검산 라벨 맵) |
 | 134, 135 | A-P0-11 (「전세 끼고 매입」), C-P0-5 (전세가율·역전세·양도세·1세대1주택 풀이) |
