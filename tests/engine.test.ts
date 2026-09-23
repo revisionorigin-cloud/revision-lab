@@ -69,8 +69,9 @@ describe("오피스 모델 (Model Desk 이식)", () => {
     expect(r.years[0].noi).toBeCloseTo(noi, 4);
     expect(r.deposits).toBeCloseTo(dep, 6);
   });
-  it("Model Desk 기본값에서 IRR이 상식 범위 (5~25%)", () => {
-    expect(r.leveredIrr! * 100).toBeGreaterThan(5);
+  it("Model Desk 기본값에서 IRR이 상식 범위 (3~25%)", () => {
+    // 보증금 운용수익이 NOI에 들어 있으므로 매각가에 보증금을 다시 더하지 않는다 (2026-09-23 수정). 진입 4.25% 근처 Exit Cap이면 4% 대가 정상
+    expect(r.leveredIrr! * 100).toBeGreaterThan(3);
     expect(r.leveredIrr! * 100).toBeLessThan(25);
     expect(r.checks.every((c) => c.pass === true)).toBe(true);
   });

@@ -346,7 +346,7 @@ export default function ProApp() {
                 <tr><td>NOI</td><td>EGI − 운영비(연면적 × 평당 운영비 × 12). 운용보수·고정비는 NOI 아래에서 차감</td></tr>
               </>)}
               <tr><td>Cap rate</td><td>NOI ÷ (가격 − 보증금). 보증금 차감 기준</td></tr>
-              <tr><td>매각가</td><td>매각 다음 해 NOI ÷ Exit Cap + 보증금</td></tr>
+              <tr><td>매각가</td><td>{isRental ? "매각 다음 해 NOI ÷ Exit Cap + 보증금" : "매각 다음 해 NOI ÷ Exit Cap. NOI에 보증금 운용수익이 들어 있으므로 보증금을 다시 더하지 않고, 매수인이 승계하는 보증금만 매각대금에서 뺍니다"}</td></tr>
               <tr><td>자기자본</td><td>매입가 + 취득부대비 − 대출 − 우선주 − 승계 보증금</td></tr>
               <tr><td>DSCR</td><td>NOI ÷ (이자 + 원금)</td></tr>
               <tr><td>우선주</td><td>매기 우선배당(미지급 이월) 후 잔여가 보통주. 매각 시 우선주 원금과 미지급 배당을 먼저 정산</td></tr>

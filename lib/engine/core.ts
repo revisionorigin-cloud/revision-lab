@@ -9,6 +9,8 @@ export type RevenueResult = {
   price: number; // 매입가
   acqCost: number; // 취득세 등 부대비
   deposits: number; // 승계 보증금 (없으면 0). 매각 시 매수인이 승계
+  /** true면 NOI에 보증금 운용수익이 이미 들어 있다 (오피스 관행). 이때 가치 = NOI ÷ Cap 이고 보증금을 다시 더하지 않는다 */
+  depositsInNoi?: boolean;
   noi: number[]; // 1년차 ~ (보유기간+1)년차 NOI. 마지막 원소가 매각 다음 해
   otherFixed: number; // 자산운용보수 등 연 고정비 (NOI 아래에서 차감)
   warnings: string[];
@@ -147,7 +149,8 @@ export function runCore(rev: RevenueResult, c: CapitalInput): CoreResult {
 
   const fwdNoi = rev.noi[n] ?? rev.noi[rev.noi.length - 1] ?? 0;
   const exitCap = pct(c.exitCapPct);
-  const saleValue = exitCap > 0 ? fwdNoi / exitCap + rev.deposits : 0;
+  const depAdd = rev.depositsInNoi ? 0 : rev.deposits; // 보증금 차감 Cap 관행에서만 가치에 보증금을 더한다
+  const saleValue = exitCap > 0 ? fwdNoi / exitCap + depAdd : 0;
   const saleCost = saleValue * pct(c.saleCostPct);
   const book = uses - depr * n;
   const exitTax = corp ? Math.max(0, saleValue - saleCost - book) * pct(c.corpTaxPct) : 0;
@@ -177,7 +180,7 @@ export function runCore(rev: RevenueResult, c: CapitalInput): CoreResult {
     ...rev.checks,
     { label: "조달 = 사용 (Sources = Uses)", pass: Math.abs(sources - uses) < 1e-6 * Math.max(1, uses), detail: `대출 + 우선주 + 승계 보증금 + 자기자본 − 총 취득원가 = ${(sources - uses).toFixed(4)}` },
     { label: "IRR 역산 (NPV@IRR = 0)", pass: leveredIrr === null ? null : Math.abs(npv(leveredIrr, leveredCfs)) < 1e-4 * Math.max(1, equity), detail: leveredIrr === null ? "IRR을 산출할 수 없는 입력입니다" : `NPV(IRR) = ${npv(leveredIrr, leveredCfs).toFixed(6)} 만원` },
-    { label: "매각가 = 차년도 NOI ÷ Exit Cap + 보증금", pass: exitCap > 0 && Math.abs((saleValue - rev.deposits) * exitCap - fwdNoi) < 1e-6 * Math.max(1, Math.abs(fwdNoi)), detail: `(매각가 − 보증금) × Exit Cap − 차년도 NOI = ${((saleValue - rev.deposits) * exitCap - fwdNoi).toFixed(4)}` },
+    { label: rev.depositsInNoi ? "매각가 = 차년도 NOI ÷ Exit Cap" : "매각가 = 차년도 NOI ÷ Exit Cap + 보증금", pass: exitCap > 0 && Math.abs((saleValue - depAdd) * exitCap - fwdNoi) < 1e-6 * Math.max(1, Math.abs(fwdNoi)), detail: `(매각가${rev.depositsInNoi ? "" : " − 보증금"}) × Exit Cap − 차년도 NOI = ${((saleValue - depAdd) * exitCap - fwdNoi).toFixed(4)}` },
     { label: "대출 상환 스케줄 정합", pass: Math.abs(debt.reduce((a, d) => a + d.principal, 0) + loanAtExit - loan) < 1e-6 * Math.max(1, loan), detail: `원금 상환 합계 + 만기 잔액 − 대출 = ${(debt.reduce((a, d) => a + d.principal, 0) + loanAtExit - loan).toFixed(4)}` },
   ];
 
@@ -188,8 +191,8 @@ export function runCore(rev: RevenueResult, c: CapitalInput): CoreResult {
     equityMultiple: ok ? inflow / equity : null,
     avgCoC: ok ? sumOp / n / equity : null,
     minDscr: dscrs.length ? Math.min(...dscrs) : null,
-    goingInCap: price - rev.deposits > 0 ? noi1 / (price - rev.deposits) : NaN,
-    yieldOnCost: uses - rev.deposits > 0 ? noi1 / (uses - rev.deposits) : NaN,
+    goingInCap: price - depAdd > 0 ? noi1 / (price - depAdd) : NaN,
+    yieldOnCost: uses - depAdd > 0 ? noi1 / (uses - depAdd) : NaN,
     debtYield: loan > 0 ? noi1 / loan : null,
     effLtv: price > 0 ? (loan + rev.deposits) / price : NaN,
     checks,

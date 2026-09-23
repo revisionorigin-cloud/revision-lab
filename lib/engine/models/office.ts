@@ -70,7 +70,7 @@ export function officeRevenue(i: OfficeInput, holdYears: number): RevenueResult 
     detail: "EGI − 운영비 = NOI (전 연도)",
   }];
   return {
-    price, acqCost, deposits: depositTot, noi,
+    price, acqCost, deposits: depositTot, noi, depositsInNoi: true,
     otherFixed: price * pct(i.aumFeePct) + i.fixedCost,
     warnings, checks, nla, egi1, opex1,
   };
