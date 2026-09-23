@@ -129,7 +129,7 @@ export default function HomeApp() {
             <ul className="notes">{r.warnings.map((w, k) => <li key={k} className="note-warn">{w}</li>)}
               {r.acq.ratePct >= 8 && <li className="note-warn">취득세 중과 {pctv(r.acq.totalPct, 1)}가 적용됩니다 ({r.acq.label}). 무주택으로 살 때보다 {eok(r.acq.amount - input.price * 0.011)}이 더 듭니다.</li>}
               {input.purpose === "jeonse" && r.jeonseStress && <li className="note-warn">역전세: 전세가 {pctv(input.jeonseDropPct, 0)} 하락 시 {eok(r.jeonseStress.drop)}을 만기에 현금으로 돌려줘야 합니다. 이 돈이 없으면 집을 팔거나 대출을 받아야 합니다.</li>}
-              {input.purpose === "live" && r.irr !== null && r.breakevenGrowthAltPct !== null && <li className={input.priceGrowthPct >= r.breakevenGrowthAltPct ? "note-ok" : "note-warn"}>지금 가정({pctv(input.priceGrowthPct, 1)}/년)으로는 {yrs}년 뒤 내 돈 기준 연 {pct(r.irr)}입니다. 기회수익률 {pctv(input.altReturnPct, 1)}보다 {input.priceGrowthPct >= r.breakevenGrowthAltPct ? "높습니다" : "낮습니다. 실거주 만족을 빼면 숫자만으로는 임대가 유리합니다"}.</li>}
+              {input.purpose === "live" && r.irr !== null && r.breakevenGrowthAltPct !== null && <li className={input.priceGrowthPct >= r.breakevenGrowthAltPct ? "note-ok" : "note-warn"}>지금 가정({pctv(input.priceGrowthPct, 1)}/년)으로는 {yrs}년 뒤 내 돈 기준 연 {pct(r.irr)}입니다. 기회수익률 {pctv(input.altReturnPct, 1)}보다 {input.priceGrowthPct >= r.breakevenGrowthAltPct ? "높습니다" : "낮습니다. 숫자만 비교하면 임대 쪽 수익률이 더 높게 계산됩니다"}.</li>}
             </ul>
 
             <h3>처음에 드는 돈</h3>
