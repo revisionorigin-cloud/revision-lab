@@ -302,13 +302,15 @@ export function Seg<T extends string>({ id, label, value, options, onChange, ter
   const uid = useId();
   const gid = id ?? `seg-${cleanId(uid)}`;
   const lid = `${gid}-l`;
-  // aria-labelledby는 순수 라벨 요소만 가리킨다. Term 버튼·role=tooltip 정의는 label의 형제로 두어 radiogroup 이름에 정의문이 붙지 않게 한다 (§4.5).
-  // term이 있으면 보이는 라벨 자체가 Term 트리거이고(라벨 문구 유지, 정의는 term 키로 조회) 순수 라벨은 sr-only로 남긴다
+  // NumField와 같은 구조 (§4.5 「Term은 label 형제로」). aria-labelledby는 순수 라벨 요소만 가리키고 Term 버튼·role=tooltip 정의는
+  // 그 형제로 두어 radiogroup 접근성 이름에 정의문이 붙지 않게 한다. 라벨이 곧 용어 키면 라벨을 트리거로 쓰고 순수 라벨은 sr-only,
+  // 아니면 보이는 라벨 옆에 용어 키 트리거를 둔다. 요소는 globals.css의 `.field-label > label + .term-wrap` 간격 규칙에 맞춰 label
+  const labelIsTerm = term !== undefined && label === term;
   return (
     <div className="field">
       <span className="field-label">
-        <label id={lid} className={term ? "sr-only" : undefined}>{label}</label>
-        {term ? <Term k={term}>{label}</Term> : null}
+        <label id={lid} className={labelIsTerm ? "sr-only" : undefined}>{label}</label>
+        {term ? (labelIsTerm ? <Term k={term}>{label}</Term> : <Term k={term} />) : null}
       </span>
       <SegCtl id={gid} labelId={lid} value={value} options={options} onChange={onChange} />
       {derived ? <div className="field-derived">{derived}</div> : null}

@@ -8,7 +8,10 @@ import { neg } from "./fields";
  * 컨테이너 실제 폭(px)으로 그린다. 모바일에서 글자가 같이 줄어들지 않게 한다.
  * 첫 폭은 레이아웃 직후 동기적으로 읽는다. ResizeObserver 알림은 렌더 프레임에 실려 오므로
  * 프레임이 멈춘 탭(백그라운드·미리보기 패널·인쇄)에서는 늦게 오거나 오지 않는다.
- * beforeprint·afterprint·orientationchange·resize 에서 다시 잰다.
+ * beforeprint·afterprint·orientationchange·resize 에서 다시 잰다. beforeprint는 인쇄 레이아웃이
+ * 적용되기 전에 오므로 화면 폭을 읽는다. 인쇄 미디어가 실제로 켜진 뒤(matchMedia("print") change)
+ * 한 번 더 재고, 그래도 재측정이 늦는 경우(Page.printToPDF처럼 스크립트가 끼어들 틈이 없는 인쇄)는
+ * svg viewBox + width 100%(SVG_FIT)가 컨테이너 폭에 비율대로 맞춘다.
  */
 function useWidth<T extends HTMLElement>(): [React.RefObject<T | null>, number] {
   const ref = useRef<T | null>(null);
@@ -28,10 +31,18 @@ function useWidth<T extends HTMLElement>(): [React.RefObject<T | null>, number] 
     }
     const evs = ["beforeprint", "afterprint", "orientationchange", "resize"] as const;
     evs.forEach((ev) => window.addEventListener(ev, measure));
-    return () => { ro?.disconnect(); evs.forEach((ev) => window.removeEventListener(ev, measure)); };
+    const mq = typeof window.matchMedia === "function" ? window.matchMedia("print") : null;
+    mq?.addEventListener("change", measure);
+    return () => { ro?.disconnect(); evs.forEach((ev) => window.removeEventListener(ev, measure)); mq?.removeEventListener("change", measure); };
   }, []);
   return [ref, w];
 }
+
+/**
+ * svg는 잰 폭(w) 좌표계로 그리고 viewBox로 컨테이너에 맞춘다. 화면에서는 컨테이너 폭 = w 이므로 1:1이고,
+ * 인쇄처럼 재측정이 레이아웃 뒤에 오지 못하는 경우에만 비율대로 줄거나 늘어 잘리지 않는다.
+ */
+const SVG_FIT: CSSProperties = { width: "100%", height: "auto", touchAction: "pan-y" };
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
@@ -103,7 +114,8 @@ export function LineChart({ points, digits = 1, unit, height = 180, title, thin 
     const every = Math.ceil(n / (w < 480 ? 4 : 8));
     const h = hover !== null ? points[hover] : null;
     const idxAt = (clientX: number, el: SVGSVGElement) => {
-      const x = clientX - el.getBoundingClientRect().left;
+      const r = el.getBoundingClientRect();
+      const x = (clientX - r.left) * (r.width > 0 ? w / r.width : 1); // 스케일된 svg면 좌표계로 환산
       return clamp(Math.round(((x - pad.l) / (w - pad.l - pad.r)) * (n - 1)), 0, n - 1);
     };
     const move = (e: PointerEvent<SVGSVGElement>) => setHover(idxAt(e.clientX, e.currentTarget));
@@ -117,7 +129,7 @@ export function LineChart({ points, digits = 1, unit, height = 180, title, thin 
     const last = lastIdx !== null ? points[lastIdx] : null;
     const ago = agoIdx !== null ? points[agoIdx] : null;
     body = (
-      <svg width={w} height={height} role="group" tabIndex={0} aria-label={title ?? `${unit} 월별 추이`} style={{ touchAction: "pan-y" }}
+      <svg width={w} height={height} viewBox={`0 0 ${w} ${height}`} style={SVG_FIT} role="group" tabIndex={0} aria-label={title ?? `${unit} 월별 추이`}
         onPointerMove={move} onPointerDown={move} onPointerLeave={(e) => { if (e.pointerType === "mouse") setHover(null); }} onKeyDown={onKey}>
         <title>{title ?? `${unit} 월별 추이`}</title>
         <desc>{`${validIdx.length}개월 · 최근 ${last?.label ?? ""} ${last && last.y !== null ? tick(last.y, digits) : ""} ${unit} · 점선은 표본 ${thin}건 미만 · 좌우 방향키로 이동`}</desc>
@@ -207,7 +219,7 @@ export function Scatter({ items, selected, onPick, xLabel, yLabel, height = 300,
       if (t) { setHover(t.key); hits.current.get(t.key)?.focus(); }
     };
     body = (
-      <svg width={w} height={H} role="group" aria-label={`${xLabel} 대 ${yLabel} 산점도 · ${items.length}곳`} style={{ touchAction: "pan-y" }}>
+      <svg width={w} height={H} viewBox={`0 0 ${w} ${H}`} style={SVG_FIT} role="group" aria-label={`${xLabel} 대 ${yLabel} 산점도 · ${items.length}곳`}>
         <title>{`${xLabel} 대 ${yLabel} 산점도`}</title>
         <desc>{`원 하나가 단지 하나 · ${items.length}곳 · 방향키로 이동, Enter로 선택`}</desc>
         {niceTicks(yl, yh, 4).map((t) => (
@@ -281,7 +293,8 @@ export function TimeScatter({ points, legend, digits = 1, height = 200 }: { poin
     // svg 좌표에서 가장 가까운 점 (20px 안)
     const nearest = (e: PointerEvent<SVGSVGElement>) => {
       const r = e.currentTarget.getBoundingClientRect();
-      const px = e.clientX - r.left, py = e.clientY - r.top;
+      const s = r.width > 0 ? w / r.width : 1; // 스케일된 svg면 좌표계로 환산
+      const px = (e.clientX - r.left) * s, py = (e.clientY - r.top) * s;
       let best = -1, bd = 20 * 20;
       for (let k = 0; k < pos.length; k++) {
         const d = (pos[k].x - px) ** 2 + (pos[k].y - py) ** 2;
@@ -290,7 +303,7 @@ export function TimeScatter({ points, legend, digits = 1, height = 200 }: { poin
       setTip(best >= 0 ? pos[best].tip : null);
     };
     body = (
-      <svg width={w} height={height} role="img" aria-label={`계약일별 분포 · ${points.length}건`} style={{ touchAction: "pan-y" }}
+      <svg width={w} height={height} viewBox={`0 0 ${w} ${height}`} style={SVG_FIT} role="img" aria-label={`계약일별 분포 · ${points.length}건`}
         onPointerMove={nearest} onPointerDown={nearest} onPointerLeave={(e) => { if (e.pointerType === "mouse") setTip(null); }}>
         <title>계약일별 분포</title>
         {niceTicks(lo, hi, 3).map((t) => (

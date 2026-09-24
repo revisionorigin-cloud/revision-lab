@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { LineChart, Scatter, TimeScatter } from "./charts";
 import { Kpi, Notice, SectionHead, SegCtl, Skel, Term, neg, scrollMode } from "./fields";
 import { DASH, num, ymLabel, ymdLabel } from "@/lib/format";
@@ -53,6 +53,26 @@ function useOverflowX(): [(el: HTMLElement | null) => void, boolean] {
   return [attach, over];
 }
 
+/**
+ * ≤600 여부. 시장 표의 .m-hide 열(준공·전용㎡·신규−갱신)이 숨는 globals.css 구간과 같은 조건이다.
+ * 그 구간에서만 단지명 아래 small에 준공을 함께 적는다(§4.4 「동·준공은 단지명 아래 small」). 서버·hydration 스냅샷은 false.
+ */
+const NARROW_MQ = "(max-width: 600px)";
+const hasMq = () => typeof window !== "undefined" && typeof window.matchMedia === "function";
+const subscribeNarrow = (cb: () => void) => {
+  if (!hasMq()) return () => {};
+  const mq = window.matchMedia(NARROW_MQ);
+  mq.addEventListener("change", cb);
+  return () => mq.removeEventListener("change", cb);
+};
+const getNarrow = () => hasMq() && window.matchMedia(NARROW_MQ).matches;
+const getNarrowServer = () => false;
+function useNarrow(): boolean {
+  return useSyncExternalStore(subscribeNarrow, getNarrow, getNarrowServer);
+}
+/** 단지명 아래 small. 데스크톱은 동만(준공 열이 따로 있다), ≤600은 「동 · 준공년」 */
+const rowSub = (c: ComplexStat, narrow: boolean) => (narrow ? [c.dong, c.buildYear ? `${c.buildYear}년` : DASH].filter(Boolean).join(" · ") : c.dong);
+
 /* ── 라벨: Pro는 원어 지표명, Home은 질문형 풀이(§4.3 라벨 맵) */
 type KpiId = "conv" | "rent" | "price" | "yield" | "gap" | "yoy" | "priceYoY" | "wolse";
 const LABEL: Record<MarketAudience, Record<KpiId | "rrr", string>> = {
@@ -79,12 +99,14 @@ const COL_TITLE = {
 } as const;
 
 export function MarketPanel({
-  asset, onAsset, regions, regionsError, code, band, market, loading, error, selectedKey, detail, detailError, legalCapPct,
+  asset, onAsset, regions, regionsError, code, band, market, loading, error, errorRaw, selectedKey, detail, detailError, detailErrorRaw, legalCapPct,
   onCode, onBand, onPick, onFillRegion, onFillComplex, onRetry,
   compact, audience, sectionNo = "01", fillLabel = "이 지역 시장값으로 가정 채우기", fillConfirm, links,
 }: {
   asset: Asset; onAsset?: (a: Asset) => void;
   regions: RegionsPayload | null; regionsError?: boolean; code: string; band: AreaBand; market: Market | null; loading: boolean; error: string | null;
+  /** 오류 서버 원문(useMarket().errorRaw · detailErrorRaw). 화면에는 안 내고 오류 notice small의 title에만 둔다 */
+  errorRaw?: string | null; detailErrorRaw?: string | null;
   selectedKey: string | null; detail: ComplexDetail | null; detailError?: string | null; legalCapPct: number | null;
   onCode: (c: string) => void; onBand: (b: AreaBand) => void; onPick: (key: string | null) => void;
   onFillRegion?: () => void; onFillComplex?: (c: ComplexStat) => void;
@@ -111,6 +133,7 @@ export function MarketPanel({
   const pickedByUser = useRef(false);
   const [tableWrapRef, tableOver] = useOverflowX();
   const [detailWrapRef, detailOver] = useOverflowX();
+  const narrow = useNarrow();
   const sido = regions?.regions.find((s) => s.sgg.some((g) => g.code === code)) ?? regions?.regions[0];
   const snapSet = useMemo(() => new Set(regions?.snapshots[asset]?.map((s) => s.code) ?? []), [regions, asset]);
   const bands = BANDS_BY_ASSET[asset];
@@ -284,7 +307,7 @@ export function MarketPanel({
                 const sel = c.key === selectedKey;
                 return (
                   <tr key={c.key} className={sel ? "sel" : ""} onClick={() => pick(sel ? null : c.key)}>
-                    <th scope="row"><button type="button" className="rowbtn" aria-pressed={sel}>{c.name}<small>{c.dong}</small></button></th>
+                    <th scope="row"><button type="button" className="rowbtn" aria-pressed={sel}>{c.name}<small>{rowSub(c, narrow)}</small></button></th>
                     <td className="num grp m-hide">{c.buildYear || DASH}</td>
                     <td className="num m-hide">{num(c.medArea, 1)}</td>
                     <td className="num">{num(c.nRent)}</td>
@@ -368,7 +391,7 @@ export function MarketPanel({
         <Notice role="alert">
           실거래가를 불러오지 못했습니다. 시군구를 바꾸거나 잠시 후 다시 시도하십시오.
           <button type="button" className="link" onClick={retry}>다시 시도</button>
-          <small>{error}</small>
+          <small title={errorRaw ?? undefined}>{error}</small>
         </Notice>
       )}
 
@@ -423,7 +446,7 @@ export function MarketPanel({
                 <Notice role="alert">
                   단지 거래를 불러오지 못했습니다. 다른 단지를 고르거나 잠시 후 다시 시도하십시오.
                   <button type="button" className="link" onClick={retry}>다시 시도</button>
-                  <small>{detailError}</small>
+                  <small title={detailErrorRaw ?? undefined}>{detailError}</small>
                 </Notice>
               )}
               {detail && (

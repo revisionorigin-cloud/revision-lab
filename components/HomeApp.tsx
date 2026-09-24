@@ -10,7 +10,7 @@ import { rateOf, useMarket } from "./useMarket";
 import { HOME_DEFAULT, homeModel, type HomeInput, type HomeResult } from "@/lib/engine/models/home";
 import type { ComplexStat, Market } from "@/lib/connectors/market";
 import { ASSET_LABEL, BANDS_BY_ASSET, PY, isAsset, type AreaBand, type Asset } from "@/lib/connectors/types";
-import { RULES, loanCap, monthlyPayment, type HouseCount, type Zone } from "@/lib/rules";
+import { RULES, acquisitionTax, loanCap, monthlyPayment, type HouseCount, type LoanCap, type Zone } from "@/lib/rules";
 import { DASH, eok, num, pct, pctv } from "@/lib/format";
 
 /* ─────────────────────────────────────────────────────────────────────────
@@ -32,11 +32,15 @@ const FILL_KEYS: FillKey[] = ["price", "areaM2", "deposit", "monthlyRent", "rent
 /** 채우기 시점 스냅샷(§4.5). 되돌리기는 이 값으로, 출처 문구는 src로 */
 type Snap = { values: Pick<HomeInput, FillKey>; src: Partial<Record<FillKey, string>>; key: string; basis: string; short: string; month: string; n: number;
   /** 전세 끼고 매입용 전세금 추정(환산월세 × 12 ÷ 전환율). deposit 칸이 용도에 따라 보증금·전세금을 겸하므로 따로 둔다 */
-  jeonse: number | null; jeonseSrc: string };
+  jeonse: number | null; jeonseSrc: string;
+  /** 채우기 시점 환산월세(만원/평·월). 실거주 답의 「아끼는 월세」 참고값에 쓴다(계산에는 넣지 않는다) */
+  rentPy: number | null };
 type HomeAnswer = MemoAnswer & { qs: string };
 type AdvGroup = "house" | "loan" | "rent" | "hold";
 
 const ZONE_LABEL: Record<Zone, string> = { regulated: "조정대상지역", capital: "수도권 (비규제)", other: "비수도권" };
+/** lib loanCap의 binding 키를 초심자 어휘로(§1-8). 입력열 풀이·답1·KPI sub가 같은 말을 쓴다 */
+const BINDING_LABEL: Record<LoanCap["binding"], string> = { LTV: "집값 기준", DSR: "소득 기준", 한도: "수도권 상한", 불가: "대출 불가" };
 const CHECK_LABEL: Record<string, string> = {
   "자기자본 항등식": "돈의 출처와 쓰임이 일치 (내 돈 + 대출 + 보증금 = 집값 + 세금 + 중개보수)",
   "대출 상환 정합": "대출 상환 합계가 원금과 일치",
@@ -62,6 +66,29 @@ function readSeed(sp: { get(k: string): string | null }) {
 }
 
 const go = (sel: string) => document.querySelector(sel)?.scrollIntoView({ behavior: scrollMode(), block: "start" });
+
+/**
+ * 표 래퍼가 가로로 넘치는지(§4.4 ≤860 「옆으로 밀면 나머지 열」). MarketPanel과 같은 판정(scrollWidth > clientWidth, resize 재측정).
+ * 콜백 ref라 details 안에서 나중에 마운트돼도 잡는다.
+ */
+function useOverflowX(): [(el: HTMLElement | null) => void, boolean] {
+  const [over, setOver] = useState(false);
+  const ro = useRef<ResizeObserver | null>(null);
+  const attach = useCallback((el: HTMLElement | null) => {
+    ro.current?.disconnect();
+    ro.current = null;
+    if (!el) { setOver(false); return; }
+    const check = () => setOver(el.scrollWidth > el.clientWidth + 1);
+    check();
+    if (typeof ResizeObserver !== "undefined") {
+      const obs = new ResizeObserver(check);
+      obs.observe(el);
+      if (el.firstElementChild) obs.observe(el.firstElementChild);
+      ro.current = obs;
+    }
+  }, []);
+  return [attach, over];
+}
 
 /** 답 한 칸(요약·시트용). Memo 안의 정본은 Memo가 그린다 */
 function Ans({ x, short }: { x: HomeAnswer; short?: boolean }) {
@@ -147,7 +174,7 @@ export default function HomeApp() {
     }
     setRaw({ ...prev, ...values, deposit: prev.purpose === "jeonse" && jeonse !== null ? jeonse : values.deposit });
     setSnap({
-      values, src, key, n, jeonse, jeonseSrc,
+      values, src, key, n, jeonse, jeonseSrc, rentPy: rentPy ?? null,
       basis: c ? `${c.name} ${Math.round(areaM2)}㎡ (${region} ${assetLabel})` : `${scope} 매매 중앙값`,
       short: `${region} ${assetLabel}${bandLabel && bandLabel !== "전체" ? ` ${bandLabel}` : ""} 시세`,
       month: (m.meta.to || m.meta.fetchedAt || "").slice(0, 7),
@@ -187,6 +214,20 @@ export default function HomeApp() {
   // lib/rules loanCap의 스트레스 가산(수도권·규제 +1.5%p, 비수도권 +0.75%p)을 표시용으로만 되풀이한다. 계산은 lib가 한다
   const stressAdd = input.zone === "other" ? 0.75 : 1.5;
   const stressRate = input.ratePct + stressAdd;
+  /* 대출 금리 감응 한 줄(파생 줄 · title 전문). 짧은 순서로: 월 원리금(지금 대출액 그대로) → 한도. 「빌릴 수 있는 만큼」이면 한도가 먼저 준다(§8-13 폰 2줄) */
+  const rateUpLine = rateUp.cap < r.cap.max - 1
+    ? `+1%p면 월 ${nm(rateUp.paySame)}만원 · 한도 ${ek(rateUp.cap)}${loanMode === "cap" ? " · 한도가 먼저 줄어듭니다" : ""}`
+    : `+1%p면 월 ${nm(rateUp.paySame)}만원 · 한도는 그대로 ${ek(r.cap.max)}`;
+  const rateUpFull = rateUp.cap < r.cap.max - 1
+    ? `대출 금리가 1%p 오르면 지금 대출액 ${ek(input.loan)} 그대로는 월 원리금 ${nm(rateUp.paySame)}만원, 빌릴 수 있는 돈은 ${ek(rateUp.cap)}으로 줄고 그때 월 원리금은 ${nm(rateUp.payCap)}만원${loanMode === "cap" ? ". 「빌릴 수 있는 만큼」이면 금리가 오를 때 한도가 먼저 줄어듭니다" : ""}`
+    : `대출 금리가 1%p 오르면 월 원리금 ${nm(rateUp.paySame)}만원 · 빌릴 수 있는 돈은 그대로 ${ek(r.cap.max)} (${BINDING_LABEL[r.cap.binding]}이 잡음)`;
+  /* 지역 규제를 바꾸면 한도·취득세가 얼마나 달라지는지(§4.5 · 권유 없이 두 경우의 계산값만 병기). lib 함수만 호출한다 */
+  const altZone: Zone = raw.zone === "regulated" ? "capital" : "regulated";
+  const capAlt = useMemo(() => loanCap(raw.price, altZone, kind, raw.houses, raw.incomeAnnual, raw.existingDebtService, raw.ratePct, raw.termYears),
+    [raw.price, altZone, kind, raw.houses, raw.incomeAnnual, raw.existingDebtService, raw.ratePct, raw.termYears]);
+  const acqAlt = useMemo(() => acquisitionTax(raw.price, raw.areaM2, kind, raw.houses, altZone), [raw.price, raw.areaM2, kind, raw.houses, altZone]);
+  /** 지역 이름. 조정대상지역만 용어 정의(정적 dfn)를 단다 */
+  const zoneWord = (z: Zone) => (z === "regulated" ? <Term k="조정대상지역" static>조정대상지역</Term> : ZONE_LABEL[z]);
 
   const set = useCallback(<K extends keyof HomeInput>(k: K, v: HomeInput[K]) => {
     setRaw((p) => (p[k] === v ? p : { ...p, [k]: v }));
@@ -242,32 +283,41 @@ export default function HomeApp() {
   const idle = !snap && !touched && !error;
   const tone: SubNavTone = idle ? null : short ? "neg" : noLoan || over ? "warn" : "ok";
   const toneLabel = short ? "자기자본 부족" : noLoan ? "대출 불가" : over ? "한도 초과" : undefined;
-  const capParts = [`LTV ${r.cap.ltvPct}% ${ek(r.cap.ltvCap)}`]
-    .concat(r.cap.dsrCap !== null ? [`DSR 40% ${ek(r.cap.dsrCap)}`] : [])
+  /* 한도 풀이(§1-8 독자별 언어): 비율 지표명 뒤에 금액을 붙이지 않고 「집값 기준 · 소득 기준 · 수도권 상한 중 가장 작은 값」으로 통일한다.
+     LTV·DSR 원어와 비율은 입력열 풀이(Term)와 title 전문에만 둔다 */
+  const bindingKo = BINDING_LABEL[r.cap.binding];
+  const capParts = [`집값 기준(LTV ${r.cap.ltvPct}%) ${ek(r.cap.ltvCap)}`]
+    .concat(r.cap.dsrCap !== null ? [`소득 기준(DSR 40%) ${ek(r.cap.dsrCap)}`] : [])
     .concat(r.cap.capitalCap !== null ? [`수도권 상한 ${ek(r.cap.capitalCap)}`] : []);
-  const capLine = `${capParts.join(" · ")} 중 작은 값`;
+  const capLine = `${capParts.join(", ")} 중 가장 작은 값 · 지금은 ${bindingKo}`;
+  /** 이 대출이면 원리금이 소득의 몇 %인지(실제 금리 기준). 「실제 DSR」 대신 풀어 쓴다 */
+  const dsrNowLine = r.loan > 0 && r.dsrPct !== null ? `이 대출이면 원리금이 소득의 ${pv(r.dsrPct, 0)} (금리 ${pv(input.ratePct, 2)})` : "";
+  const stressTail = `${dsrNowLine ? ` · ${dsrNowLine}` : ""}${over ? ` · 직접 입력 ${ek(r.loan)}은 한도 초과` : ""}`;
+  const stressLine = r.cap.dsrCap !== null ? `소득 기준 ${ek(r.cap.dsrCap)}은 금리 +${stressAdd}%p(${pv(stressRate, 2)})로 심사한 DSR 40% 한도(스트레스 DSR)${stressTail}` : "";
   const principal1 = (r.years[0]?.principal ?? 0) / 12;
   const other1 = r.monthlyOut - r.payment;
   const lastBalance = r.years[r.years.length - 1]?.balance ?? 0;
+  /* 실거주로 아끼는 월세(시장 절 환산월세 × 평). 계산에는 넣지 않고 값만 적는다(§1-8 권유 없이). 채우기 시점 시세 기준 */
+  const rentSaved = purpose === "live" && snap?.rentPy ? snap.rentPy * (input.areaM2 / PY) : null;
+  const rentSavedLine = rentSaved !== null ? `실거주로 아끼는 월세는 넣지 않았습니다 · 이 지역 환산월세 ${nm(rentSaved)}만원/월 · ${yrs}년 ${ek(rentSaved * 12 * yrs)}` : "";
 
   /* ── 네 가지 답 (memo 정본 · uw-summary · subnav readout · mbar가 같은 배열을 읽는다)
         설명(s)은 핵심 수치를 앞에 둔 40자 안팎 산식 줄(2줄 clamp)이고, 전문은 title로 남긴다(§4.7 · §8-6). 지표명은 정적 dfn(§4.11) */
   const answers = useMemo<HomeAnswer[]>(() => {
     const q1 = "얼마까지 빌릴 수 있나";
-    const dsrNow = r.dsrPct !== null ? `DSR ${pv(r.dsrPct, 0)}` : null;
-    const stressNote = r.cap.dsrCap !== null ? `소득 기준 ${ek(r.cap.dsrCap)}은 스트레스 금리 +${stressAdd}%p(${pv(stressRate, 2)})로 계산한 DSR 40% 한도` : "";
-    const a1Full = `${capLine}. ${stressNote ? `${stressNote} · ` : ""}${dsrNow ? `실제 금리 ${pv(input.ratePct, 2)}로는 ${dsrNow}` : "소득이 없어 DSR은 계산하지 않습니다"}${over ? ` · 직접 입력 ${ek(r.loan)}은 한도를 넘습니다` : ""}`;
-    const capShort = (
-      <><Term k="LTV" static>LTV</Term> {ek(r.cap.ltvCap)}{r.cap.dsrCap !== null ? <> · <Term k="DSR" static>DSR</Term> {ek(r.cap.dsrCap)}</> : null}{r.cap.capitalCap !== null ? <> · 상한 {ek(r.cap.capitalCap)}</> : null} 중 최소</>
-    );
-    const stressShort = r.cap.dsrCap !== null ? ` · DSR 한도는 스트레스 금리 ${pv(stressRate, 2)} 기준` : "";
+    // 초심자 어휘(§1-8): 「집값 기준 · 소득 기준 · 수도권 상한 중 가장 작은 값」 + 「이 대출이면 원리금이 소득의 34%」 + 「소득 기준은 금리 +1.5%p로 심사」. 원어·비율은 title 전문에만
+    const dsrNow = r.dsrPct !== null ? `이 대출이면 원리금이 소득의 ${pv(r.dsrPct, 0)}` : null;
+    const stressNote = r.cap.dsrCap !== null ? `소득 기준 ${ek(r.cap.dsrCap)}은 금리 +${stressAdd}%p(${pv(stressRate, 2)})로 심사한 DSR 40% 한도(스트레스 DSR)` : "";
+    const a1Full = `${capLine}. ${stressNote ? `${stressNote} · ` : ""}${dsrNow ? `${dsrNow} (금리 ${pv(input.ratePct, 2)})` : "소득이 없어 소득 기준은 계산하지 않습니다"}${over ? ` · 직접 입력 ${ek(r.loan)}은 한도를 넘습니다` : ""}`;
+    const capShort = `집값 기준 ${ek(r.cap.ltvCap)}${r.cap.dsrCap !== null ? ` · 소득 기준 ${ek(r.cap.dsrCap)}` : ""}${r.cap.capitalCap !== null ? ` · 수도권 상한 ${ek(r.cap.capitalCap)}` : ""} 중 가장 작은 값`;
+    const stressShort = r.cap.dsrCap !== null ? ` · 소득 기준은 금리 +${stressAdd}%p(${pv(stressRate, 2)})로 심사` : "";
     const a1: HomeAnswer = purpose === "jeonse"
-      ? { q: q1, qs: "대출 한도", a: "0", unit: "만원", s: JEONSE_NO_LOAN }
+      ? { q: q1, qs: "대출 한도", a: "해당 없음", unit: "", s: JEONSE_NO_LOAN }
       : noLoan
       ? { q: q1, qs: "대출 한도", a: "대출 불가", unit: "", tone: "neg", s: `${r.cap.note}. 이 계산은 대출 0으로 봅니다.` }
       : over
-      ? { q: q1, qs: "대출 한도", a: eok(r.cap.max), s: <span title={a1Full}>직접 입력 {ek(r.loan)}은 한도를 넘습니다{dsrNow ? ` · 이 대출이면 ${dsrNow}` : ""} · 한도는 {capShort}</span> }
-      : { q: q1, qs: "대출 한도", a: eok(r.cap.max), s: <span title={a1Full}>{capShort}{dsrNow ? ` · 실제 ${dsrNow}` : " · 소득이 없어 DSR은 계산하지 않습니다"}{stressShort}</span> };
+      ? { q: q1, qs: "대출 한도", a: eok(r.cap.max), s: <span title={a1Full}>직접 입력 {ek(r.loan)}은 한도를 넘습니다{dsrNow ? ` · ${dsrNow}` : ""} · 한도는 {capShort}</span> }
+      : { q: q1, qs: "대출 한도", a: eok(r.cap.max), s: <span title={a1Full}>{capShort}{dsrNow ? ` · ${dsrNow}` : " · 소득이 없어 소득 기준은 계산하지 않습니다"}{stressShort}</span> };
 
     const loanTerms = r.loan > 0 ? `대출 ${ek(r.loan)} · ${pv(input.ratePct, 2)} · ${input.termYears}년` : "대출 없음";
     const a2Live = r.loan > 0
@@ -281,16 +331,18 @@ export default function HomeApp() {
         ? { q: "매달 얼마가 나가나", qs: "매달 지출", a: num(Math.abs(r.monthlyNet), 0), unit: "만원", s: `보유세·관리·수선 ${nm(r.monthlyOut)} · 대출 없음 · 전세금 ${ek(input.deposit)}은 만기에 돌려줄 돈` }
         : { q: "매달 얼마가 나가나", qs: "매달 지출", a: num(Math.abs(r.monthlyNet), 0), unit: "만원", s: <span title={a2LiveFull}>{a2Live}</span> };
 
-    // lib totalNet = 보유 중 순현금 합계(전세는 전세금 상승분 유입 포함) + 매각 순수령 − 처음 넣은 돈. 산식 줄은 그 세 항을 그대로 보여 준다
+    // lib totalNet = 보유 중 순현금 합계 + (전세는 전세금 인상분 유입) + 매각 순수령 − 처음 넣은 돈. 산식 줄은 그 항을 표 행과 같은 이름으로 보여 준다
     const q3 = `${yrs}년 뒤 팔면 내 돈이 얼마나 늘거나 줄어드나`;
     const flow = r.totalNet - r.saleNet + r.cashNeeded;
-    const flowLabel = flow < 0 ? `${yrs}년간 낸 돈` : `${yrs}년간 남은 돈`;
+    const spent = r.years.reduce((a, y) => a + y.net, 0); // 표 「연간 순현금」 행의 합
+    const depositIn = purpose === "jeonse" ? flow - spent : 0; // 표 「전세금 인상분」 행의 합(= 만기 반환 전세금 − 처음 전세금)
+    const flowLabel = spent < 0 ? `${yrs}년간 낸 돈` : `${yrs}년간 남은 돈`;
     const brokerSell = (r.salePrice * input.brokeragePct) / 100;
-    const a3Full = `팔아서 받는 돈 ${ek(r.saleNet)} = 매각 ${ek(r.salePrice)} − 중개보수 ${won(brokerSell)} − 양도세 ${won(r.cgt.tax)}${lastBalance > 0 ? ` − 대출 잔액 ${ek(lastBalance)}` : ""}${purpose === "jeonse" ? " − 전세금 반환" : purpose === "rent" ? " − 보증금 반환" : ""}. 여기서 ${flowLabel} ${ek(Math.abs(flow))}${flow < 0 ? "을 빼고" : "을 더하고"} 처음 넣은 내 돈 ${ek(r.cashNeeded)}을 빼면 ${signedEok(r.totalNet)}. 내 돈 기준 연 수익률 ${pc(r.irr)}.`;
+    const a3Full = `팔아서 받는 돈 ${ek(r.saleNet)} = 매각 ${ek(r.salePrice)} − 중개보수 ${won(brokerSell)} − 양도세 ${won(r.cgt.tax)}${lastBalance > 0 ? ` − 대출 잔액 ${ek(lastBalance)}` : ""}${purpose === "jeonse" ? " − 전세금 반환" : purpose === "rent" ? " − 보증금 반환" : ""}.${purpose === "jeonse" ? ` 전세금 인상분 ${ek(depositIn)}은 갱신 때 들어오지만 만기에 돌려줄 빚이며, 만기 반환은 받는 돈에서 이미 뺐습니다.` : ""} 여기서 ${purpose === "jeonse" ? `인상분 ${ek(depositIn)}을 더하고 ` : ""}${flowLabel} ${ek(Math.abs(spent))}${spent < 0 ? "을 빼고" : "을 더하고"} 처음 넣은 내 돈 ${ek(r.cashNeeded)}을 빼면 ${signedEok(r.totalNet)}. 내 돈 기준 연 수익률 ${pc(r.irr)}.${rentSavedLine ? ` ${rentSavedLine}.` : ""}`;
     const a3: HomeAnswer = short
       ? { q: q3, qs: `${yrs}년 뒤`, a: DASH, unit: "", tone: "neg", s: "대출과 보증금이 매입 비용을 넘어 자기자본이 0 이하입니다. 이 구조는 계산하지 않습니다." }
       : { q: q3, qs: `${yrs}년 뒤`, a: signedEok(r.totalNet), tone: r.totalNet < 0 ? "neg" : null,
-          s: <span title={a3Full}>받는 돈 {ek(r.saleNet)} {flow < 0 ? "−" : "+"} {flowLabel} {ek(Math.abs(flow))} − 처음 넣은 {ek(r.cashNeeded)} = {signedEok(r.totalNet)} · 내 돈 기준 연 {pc(r.irr)}</span> };
+          s: <span title={a3Full}>받는 돈 {ek(r.saleNet)}{purpose === "jeonse" ? ` + 전세금 인상분 ${ek(depositIn)}` : ""} {spent < 0 ? "−" : "+"} {flowLabel} {ek(Math.abs(spent))} − 처음 넣은 {ek(r.cashNeeded)} = {signedEok(r.totalNet)} · 내 돈 기준 연 {pc(r.irr)}</span> };
 
     const q4 = "본전이 되는 집값 상승률";
     const altDef = "집 대신 예금에 두면 벌 수익률";
@@ -303,7 +355,7 @@ export default function HomeApp() {
             {r.breakevenGrowthAltPct === null ? <>연 −10~15% 범위 안에서는 </> : <>연 {pv(r.breakevenGrowthAltPct, 1)} 이상이면 </>}<Term k="기회수익률" static>기회수익률</Term> {pv(input.altReturnPct, 1)}({altDef}){r.breakevenGrowthAltPct === null ? "을 넘지 못합니다" : "도 넘습니다"} · 지금 가정 {pv(input.priceGrowthPct, 1)}
           </span> };
     return [a1, a2, a3, a4];
-  }, [noLoan, short, over, purpose, yrs, r, input.deposit, input.altReturnPct, input.priceGrowthPct, input.ratePct, input.termYears, input.brokeragePct, capLine, principal1, other1, stressAdd, stressRate, lastBalance]);
+  }, [noLoan, short, over, purpose, yrs, r, input.deposit, input.altReturnPct, input.priceGrowthPct, input.ratePct, input.termYears, input.brokeragePct, capLine, principal1, other1, stressAdd, stressRate, lastBalance, rentSavedLine]);
 
   const headline = answers.map((x) => `${x.qs} ${x.a}${x.unit ?? ""}`).join(" · ");
   const monthRo = purpose === "rent" ? fmtRo(r.monthlyNet, "won+") : fmtRo(Math.abs(r.monthlyNet), "won");
@@ -351,7 +403,7 @@ export default function HomeApp() {
   );
   const advSummary: Record<AdvGroup, string> = {
     house: `${num(input.areaM2, 1)}㎡ · ${ZONE_LABEL[input.zone]} · ${singleApplies ? (input.singleHousehold ? "1주택 요건 충족" : "1주택 요건 미충족") : "1주택 요건 해당 없음"}`,
-    loan: `기존 상환액 ${nm(input.existingDebtService)} · ${purpose === "jeonse" ? "대출 없음" : loanMode === "cap" ? "빌릴 수 있는 만큼" : `직접 입력 ${ek(input.loan)}`} · ${input.termYears}년`,
+    loan: purpose === "jeonse" ? `기존 상환액 ${nm(input.existingDebtService)} · 대출 없음` : `기존 상환액 ${nm(input.existingDebtService)} · ${loanMode === "cap" ? "빌릴 수 있는 만큼" : `직접 입력 ${ek(input.loan)}`} · ${input.termYears}년`,
     rent: purpose === "live" ? "실거주에는 해당 없음"
       : purpose === "rent" ? `보증금 ${wonKr(input.deposit)} · 월세 ${nm(input.monthlyRent)}만원 · 상승률 ${pv(input.rentGrowthPct, 1)}`
         : `전세금 ${ek(input.deposit)} · 전세가율 ${pv(r.jeonseRatioPct, 0)} · 역전세 ${pv(input.jeonseDropPct, 0)}`,
@@ -375,6 +427,13 @@ export default function HomeApp() {
   const rentProv = prov("monthlyRent");
   const rentgProv = prov("rentGrowthPct");
   const yearSpend = (y: HomeResult["years"][number]) => y.interest + y.principal + y.holdTax + y.other;
+  /* 연도표(§5.4): 대출 0이면 이자·원금·잔액 행을 빼고, 전세 끼고 매입이면 「전세금 인상분」 행을 둔다.
+     연도별 인상분 = 전세금 × ((1+g)^y − (1+g)^(y−1)), n년 합 = 만기 반환 전세금 − 처음 전세금(lib home.ts depositIn과 일치) */
+  const hasLoan = r.loan > 0;
+  const gDep = 1 + input.rentGrowthPct / 100;
+  const depositInYear = (y: number) => (purpose === "jeonse" ? input.deposit * (Math.pow(gDep, y) - Math.pow(gDep, y - 1)) : 0);
+  const depositInTotal = purpose === "jeonse" ? input.deposit * (Math.pow(gDep, r.years.length) - 1) : 0;
+  const [yearsWrapRef, yearsOver] = useOverflowX();
 
   return (
     <main id="main" tabIndex={-1}>
@@ -432,13 +491,7 @@ export default function HomeApp() {
             <NumField id="h-rate" label="대출 금리" unit="%" value={input.ratePct} step={0.05} min={0} max={20} onChange={(v) => set("ratePct", v)}
               derived={<>
                 <span className="dl">{rates ? <>참고: 기준금리 {pv(rateOf(rates, "base"), 2)} · CD 91일 {pv(rateOf(rates, "cd91"), 2)} (<a className="link" href="https://ecos.bok.or.kr" target="_blank" rel="noreferrer">ECOS</a> {rates.fetchedAt})</> : "참고: 금리 불러오는 중"}</span>
-                {purpose !== "jeonse" && !noLoan ? (
-                  <span className="dl">
-                    {rateUp.cap < r.cap.max - 1
-                      ? <>+1%p면 한도 {ek(rateUp.cap)} · 월 원리금 {nm(rateUp.payCap)}만원 · 지금 대출액 {ek(r.loan)} 그대로면 {nm(rateUp.paySame)}만원{loanMode === "cap" ? " · 빌릴 수 있는 만큼이면 한도가 먼저 줄어듭니다" : ""}</>
-                      : <>+1%p면 한도는 그대로 {ek(r.cap.max)} ({r.cap.binding} 기준) · 월 원리금 {nm(rateUp.paySame)}만원</>}
-                  </span>
-                ) : null}
+                {purpose !== "jeonse" && !noLoan ? <span className="dl" title={rateUpFull}>{rateUpLine}</span> : null}
               </>} />
             <NumField id="h-growth" label="집값 상승률" unit="%/년" value={input.priceGrowthPct} step={0.5} min={-20} max={20} sign onChange={(v) => set("priceGrowthPct", v)}
               derived={market?.kpi.priceYoYPct != null
@@ -449,11 +502,16 @@ export default function HomeApp() {
               <summary>집과 규제 <span>{advSummary.house}</span></summary>
               <NumField id="h-area" label="전용면적" unit="㎡" value={input.areaM2} step={1} min={10} onChange={(v) => set("areaM2", v)} {...areaProv}
                 derived={areaProv.source ? undefined : input.areaM2 > 85 ? "85㎡ 초과: 취득 시 농어촌특별세가 붙습니다" : "85㎡ 이하: 농어촌특별세 없음"} />
-              <Seg id="h-zone" label="지역 규제" value={input.zone} options={[{ id: "regulated", label: "조정대상지역" }, { id: "capital", label: "수도권 (비규제)" }, { id: "other", label: "비수도권" }]} onChange={(v) => set("zone", v as Zone)}
-                derived="조정대상지역은 정부가 지정한 규제 지역입니다" />
+              <Seg id="h-zone" label="지역 규제" value={input.zone} options={[{ id: "regulated", label: "조정대상지역" }, { id: "capital", label: "수도권 (비규제)" }, { id: "other", label: "비수도권" }]} onChange={(v) => set("zone", v as Zone)} />
+              <p className="fine">
+                {kind === "offi"
+                  ? <>오피스텔은 <Term k="조정대상지역" static>조정대상지역</Term> 지정으로 한도·취득세가 달라지지 않습니다 (비수도권은 소득 기준 심사 금리 +0.75%p)</>
+                  : <>{zoneWord(altZone)}이면 {purpose === "jeonse" ? "" : `한도 ${capAlt.binding === "불가" ? "대출 불가" : ek(capAlt.max)} · `}취득세 {pv(acqAlt.totalPct, 1)} (지금 가정 {zoneWord(input.zone)} · {purpose === "jeonse" ? "" : `한도 ${noLoan ? "대출 불가" : ek(r.cap.max)} · `}취득세 {pv(r.acq.totalPct, 1)})</>}
+                {" · "}지정 현황은 국토교통부 고시 · 규제 기준 {RULES.loan.asOf}
+              </p>
               {singleApplies ? (
-                <Seg id="h-single" label="1세대1주택 요건" term="1세대1주택 비과세 요건" value={input.singleHousehold ? "y" : "n"} options={[{ id: "y", label: "충족 (2년 보유·거주)" }, { id: "n", label: "미충족" }]} onChange={(v) => set("singleHousehold", v === "y")}
-                  derived="무주택이고 이 집에 살 계획이면 충족 · 12억까지 양도세 비과세" />
+                <Seg id="h-single" label="1세대1주택 요건" value={input.singleHousehold ? "y" : "n"} options={[{ id: "y", label: "충족 (2년 보유·거주)" }, { id: "n", label: "미충족" }]} onChange={(v) => set("singleHousehold", v === "y")}
+                  derived={<><Term k="1세대1주택 비과세 요건">비과세 요건</Term> · 무주택 실거주면 충족 · 12억까지 양도세 없음</>} />
               ) : (
                 <div className="field static">
                   <span className="field-label">1세대1주택 요건</span>
@@ -461,29 +519,40 @@ export default function HomeApp() {
                   <div className="field-derived">{kind !== "apt" ? "오피스텔은 주택 비과세를 적용하지 않습니다" : input.houses > 0 ? "이미 주택이 있어 1세대1주택 비과세를 적용하지 않습니다" : "실거주가 아니면 1세대1주택 비과세를 적용하지 않습니다"}</div>
                 </div>
               )}
-              <p className="fine">조정대상지역 지정 현황은 국토교통부 고시 · 모르면 &apos;수도권 (비규제)&apos;로 두고 비교하십시오</p>
             </details>
 
             <details className="adv" open={openAdv.loan} onToggle={toggleAdv("loan")}>
               <summary>대출 세부 <span>{advSummary.loan}</span></summary>
               <NumField id="h-debt" label="기존 대출 연 상환액" unit="만원" value={input.existingDebtService} step={100} min={0} onChange={(v) => set("existingDebtService", v)}
                 derived="이미 갚고 있는 대출의 1년 원리금. DSR 계산에서 소득 한도를 줄입니다" />
-              <Seg id="h-loanmode" label="대출 금액" value={purpose === "jeonse" ? "none" : loanMode} options={purpose === "jeonse" ? [{ id: "none", label: "대출 없음" }] : [{ id: "cap", label: "빌릴 수 있는 만큼" }, { id: "manual", label: "직접 입력" }]}
-                onChange={(v) => { if (v === "cap" || v === "manual") setLoanMode(v); }}
-                derived={purpose === "jeonse" ? JEONSE_NO_LOAN : loanMode === "cap" ? "규제 한도까지 계산" : undefined} />
+              {purpose === "jeonse" ? (
+                /* 전세 끼고 매입은 대출 0(§7 C-P0-6). 고를 수 없는 것을 라디오로 두지 않고 읽기 전용 행으로 */
+                <div className="field static">
+                  <span className="field-label">대출 금액</span>
+                  <span className="field-static">대출 없음</span>
+                </div>
+              ) : (
+                <Seg id="h-loanmode" label="대출 금액" value={loanMode} options={[{ id: "cap", label: "빌릴 수 있는 만큼" }, { id: "manual", label: "직접 입력" }]}
+                  onChange={(v) => { if (v === "cap" || v === "manual") setLoanMode(v); }}
+                  derived={loanMode === "cap" ? "규제 한도까지 계산" : undefined} />
+              )}
               {purpose !== "jeonse" && loanMode === "manual" ? <NumField id="h-loan" label="대출" unit="만원" value={raw.loan} step={1000} min={0} onChange={(v) => set("loan", v)} derived={over ? `한도 ${ek(r.cap.max)}을 넘습니다 · 엔진은 입력값 그대로 계산합니다` : undefined} /> : null}
               <div className="field static">
                 <span className="field-label">빌릴 수 있는 돈</span>
-                <span className={`field-value${noLoan ? " neg" : ""}`}>{noLoan ? "불가" : <>{neg(splitUnit(eok(r.cap.max)).value)}<small className="u">억</small></>}</span>
+                {purpose === "jeonse"
+                  ? <span className="field-static">해당 없음</span>
+                  : <span className={`field-value${noLoan ? " neg" : ""}`}>{noLoan ? "불가" : <>{neg(splitUnit(eok(r.cap.max)).value)}<small className="u">억</small></>}</span>}
                 <div className="field-derived">
-                  {noLoan ? `${r.cap.note} · 이 계산은 대출 0으로 봅니다` : <>
-                    <span className="dl">= 집값 기준(<Term k="LTV">LTV</Term> {r.cap.ltvPct}%) {ek(r.cap.ltvCap)}{r.cap.dsrCap !== null ? <>, 소득 기준(DSR 40%) {ek(r.cap.dsrCap)}</> : null}{r.cap.capitalCap !== null ? <>, 수도권 상한 {ek(r.cap.capitalCap)}</> : null} 중 작은 값 · {r.cap.binding} 기준</span>
-                    {r.cap.dsrCap !== null ? <span className="dl">소득 기준 {ek(r.cap.dsrCap)}은 <Term k="스트레스 DSR">스트레스 금리</Term> +{stressAdd}%p({pv(stressRate, 2)})로 계산한 DSR 40% 한도{r.loan > 0 && r.dsrPct !== null ? ` · 실제 금리 ${pv(input.ratePct, 2)}로는 DSR ${pv(r.dsrPct, 0)}` : ""}{over ? ` · 직접 입력 ${ek(r.loan)}은 한도 초과` : ""}</span> : null}
+                  {purpose === "jeonse" ? <span className="dl" title={JEONSE_NO_LOAN}>{JEONSE_NO_LOAN}</span> : noLoan ? `${r.cap.note} · 이 계산은 대출 0으로 봅니다` : <>
+                    <span className="dl" title={capLine}>= 집값 기준(<Term k="LTV">LTV</Term> {r.cap.ltvPct}%) {ek(r.cap.ltvCap)}{r.cap.dsrCap !== null ? <>, 소득 기준(DSR 40%) {ek(r.cap.dsrCap)}</> : null}{r.cap.capitalCap !== null ? <>, 수도권 상한 {ek(r.cap.capitalCap)}</> : null} 중 가장 작은 값 · 지금은 {bindingKo}</span>
+                    {r.cap.dsrCap !== null ? <span className="dl" title={stressLine}>소득 기준 {ek(r.cap.dsrCap)}은 금리 +{stressAdd}%p({pv(stressRate, 2)})로 심사한 DSR 40% 한도(<Term k="스트레스 DSR">스트레스 DSR</Term>){stressTail}</span> : null}
                   </>}
                 </div>
               </div>
-              <NumField id="h-term" label="만기" unit="년" value={input.termYears} step={1} min={1} max={40} onChange={(v) => set("termYears", Math.round(v))}
-                derived={`원리금균등 월 ${nm(r.payment)}만원 · 첫 달 이자 ${nm(r.interest1)}만원`} />
+              {purpose !== "jeonse" ? (
+                <NumField id="h-term" label="만기" unit="년" value={input.termYears} step={1} min={1} max={40} onChange={(v) => set("termYears", Math.round(v))}
+                  derived={noLoan ? "대출 0으로 계산 중 · 만기는 쓰이지 않습니다" : `원리금균등 월 ${nm(r.payment)}만원 · 첫 달 이자 ${nm(r.interest1)}만원`} />
+              ) : null}
               {R("loan")}
             </details>
 
@@ -503,10 +572,10 @@ export default function HomeApp() {
                 </>
               ) : (
                 <>
-                  <NumField id="h-deposit" label="전세금" unit="만원" value={input.deposit} step={500} min={0} onChange={(v) => set("deposit", v)} {...prov("deposit")}
-                    derived={<><Term k="전세가율">전세가율</Term> {pv(r.jeonseRatioPct, 1)} · 전세금 ÷ 매입가. 이 돈은 내 돈이 아니라 세입자에게 돌려줄 빚입니다</>} />
-                  <NumField id="h-rentg" label="전세금 상승률" unit="%/년" value={input.rentGrowthPct} step={0.5} min={0} max={20} onChange={(v) => set("rentGrowthPct", v)} {...prov("rentGrowthPct")}
-                    derived="갱신 때는 5% 상한이 적용됩니다. 오른 만큼은 보유 중에 들어오고 만기에 함께 돌려줍니다" />
+                  <NumField id="h-deposit" label="전세금" unit="만원" value={input.deposit} step={500} min={0} onChange={(v) => set("deposit", v)} {...depositProv}
+                    derived={<><Term k="전세가율">전세가율</Term> {pv(r.jeonseRatioPct, 1)} · 전세금 ÷ 매입가 · 세입자에게 돌려줄 빚</>} />
+                  <NumField id="h-rentg" label="전세금 상승률" unit="%/년" value={input.rentGrowthPct} step={0.5} min={0} max={20} onChange={(v) => set("rentGrowthPct", v)} {...rentgProv}
+                    derived={rentgProv.source ? undefined : "갱신 5% 상한 · 오른 만큼은 보유 중에 들어오고 만기에 돌려줍니다"} />
                   <NumField id="h-drop" label="역전세 · 만기 전세가 하락" unit="%" term="역전세" value={input.jeonseDropPct} step={5} min={0} max={60} onChange={(v) => set("jeonseDropPct", v)}
                     derived={`만기 때 전세 시세가 이만큼 내려가면 ${ek(r.jeonseStress?.drop ?? 0)}을 내 돈으로 돌려줘야 합니다`} />
                   {R("rent")}
@@ -545,13 +614,14 @@ export default function HomeApp() {
                 {purpose === "live" && r.irr !== null && r.breakevenGrowthAltPct !== null ? (
                   <li className={input.priceGrowthPct >= r.breakevenGrowthAltPct ? "note-ok" : "note-warn"}>지금 가정({pv(input.priceGrowthPct, 1)}/년)으로는 {yrs}년 뒤 내 돈 기준 연 {pc(r.irr)}입니다. 기회수익률 {pv(input.altReturnPct, 1)}보다 {input.priceGrowthPct >= r.breakevenGrowthAltPct ? "높습니다" : `낮습니다. 연 ${pv(r.breakevenGrowthAltPct, 1)} 이상 오르면 기회수익률을 넘습니다`}.</li>
                 ) : null}
+                {rentSavedLine ? <li>{rentSavedLine}</li> : null}
               </ul>
 
               <h3>처음에 드는 돈</h3>
               <div className="kpis four">
                 <Kpi label="자기자본" value={short ? DASH : eok(r.cashNeeded)} unit={short ? "" : undefined} sub="매입가 + 취득세 + 중개보수 − 대출 − 보증금" tone={short ? "neg" : undefined} />
                 <Kpi label="취득세 등" term="취득세" value={won(r.acq.amount)} sub={`${r.acq.label} ${pv(r.acq.totalPct, 2)}`} />
-                <Kpi label="대출" value={eok(r.loan)} sub={purpose === "jeonse" ? "전세 끼고 매입 · 담보대출 없음" : noLoan ? `${r.cap.note} · 대출 0` : over ? `한도 ${ek(r.cap.max)} 초과 (직접 입력)` : `${r.cap.binding} 기준 한도 ${ek(r.cap.max)}`} tone={over ? "warn" : undefined} />
+                <Kpi label="대출" value={eok(r.loan)} sub={purpose === "jeonse" ? "전세 끼고 매입 · 담보대출 없음" : noLoan ? `${r.cap.note} · 대출 0` : over ? `한도 ${ek(r.cap.max)} 초과 (직접 입력)` : `${bindingKo} 한도 ${ek(r.cap.max)}`} tone={over ? "warn" : undefined} />
                 {purpose === "live"
                   ? <Kpi label="중개보수" value={won((input.price * input.brokeragePct) / 100)} sub={`${pv(input.brokeragePct, 1)} 가정`} />
                   : <Kpi label={purpose === "jeonse" ? "전세금 (세입자 돈)" : "보증금 (세입자 돈)"} value={eok(input.deposit)} sub="만기에 돌려줘야 합니다" />}
@@ -559,23 +629,25 @@ export default function HomeApp() {
               {R("acq")}
 
               <h3>매달 · 매년</h3>
-              <div className="table-wrap">
+              <div className="table-wrap" ref={yearsWrapRef}>
                 <table className="data tight home-years">
-                  <caption className="sr-only">연도별 현금흐름 · 단위 만원 · 대출 잔액은 연말 기준</caption>
+                  <caption className="sr-only">연도별 현금흐름 · 단위 만원{hasLoan ? " · 대출 잔액은 연말 기준" : ""}{purpose === "jeonse" ? " · 전세금 인상분은 갱신 시 유입되고 만기에 돌려줍니다" : ""}</caption>
                   <thead><tr><th scope="col">항목 (만원)</th>{r.years.map((y) => <th key={y.year} scope="col" className="num">{y.year}년차</th>)}</tr></thead>
                   <tbody>
                     {purpose === "rent" ? <tr><th scope="row">월세 수입</th>{r.years.map((y) => <td key={y.year} className="num">{nm(y.income)}</td>)}</tr> : null}
-                    <tr><th scope="row">(−) 이자</th>{r.years.map((y) => <td key={y.year} className="num">{nm(y.interest)}</td>)}</tr>
-                    <tr><th scope="row">(−) 원금 상환</th>{r.years.map((y) => <td key={y.year} className="num">{nm(y.principal)}</td>)}</tr>
+                    {hasLoan ? <tr><th scope="row">(−) 이자</th>{r.years.map((y) => <td key={y.year} className="num">{nm(y.interest)}</td>)}</tr> : null}
+                    {hasLoan ? <tr><th scope="row">(−) 원금 상환</th>{r.years.map((y) => <td key={y.year} className="num">{nm(y.principal)}</td>)}</tr> : null}
                     <tr><th scope="row">(−) <Term k="보유세" static>보유세</Term></th>{r.years.map((y) => <td key={y.year} className="num">{nm(y.holdTax)}</td>)}</tr>
                     <tr><th scope="row">(−) 관리 · 수선</th>{r.years.map((y) => <td key={y.year} className="num">{nm(y.other)}</td>)}</tr>
                     <tr className="total"><th scope="row">연간 지출 합계</th>{r.years.map((y) => <td key={y.year} className="num">{nm(yearSpend(y))}</td>)}</tr>
                     <tr className="total"><th scope="row">연간 순현금</th>{r.years.map((y) => <td key={y.year} className={`num${y.net < 0 ? " negtext" : ""}`}>{nm(y.net)}</td>)}</tr>
-                    <tr><th scope="row">대출 잔액 <small>연말 · 억·만원</small></th>{r.years.map((y) => <td key={y.year} className="num">{wonKr(y.balance)}</td>)}</tr>
+                    {purpose === "jeonse" ? <tr><th scope="row">전세금 인상분 <small>갱신 시 유입 · 만기 반환</small></th>{r.years.map((y) => <td key={y.year} className="num">{nm(depositInYear(y.year))}</td>)}</tr> : null}
+                    {hasLoan ? <tr><th scope="row">대출 잔액 <small>연말 · 억·만원</small></th>{r.years.map((y) => <td key={y.year} className="num">{wonKr(y.balance)}</td>)}</tr> : null}
                   </tbody>
                 </table>
               </div>
-              <p className="fine">보유세 1년차 {nm(r.hold.total)}만원 = 재산세 {nm(r.hold.propertyTax)} + 도시지역분 {nm(r.hold.urbanTax)} + 지방교육세 {nm(r.hold.eduTax)}{r.hold.compTax > 0 ? ` + 종부세 ${nm(r.hold.compTax)}` : ""} · {r.hold.note} · 순현금이 음수면 그만큼 내 돈이 매년 나갑니다</p>
+              {yearsOver ? <div className="table-foot home-years-foot"><span className="m-only">옆으로 밀면 나머지 열</span></div> : null}
+              <p className="fine">보유세 1년차 {nm(r.hold.total)}만원 = 재산세 {nm(r.hold.propertyTax)} + 도시지역분 {nm(r.hold.urbanTax)} + 지방교육세 {nm(r.hold.eduTax)}{r.hold.compTax > 0 ? ` + 종부세 ${nm(r.hold.compTax)}` : ""} · {r.hold.note} · 순현금이 음수면 그만큼 내 돈이 매년 나갑니다{purpose === "jeonse" ? ` · 전세금 인상분 ${yrs}년 합계 ${ek(depositInTotal)}은 갱신 때 들어오지만 만기에 돌려줄 빚입니다` : ""}</p>
               {R("hold")}
 
               <h3>{yrs}년 뒤 팔면</h3>

@@ -16,6 +16,8 @@
 
 /* 결론 문장 안 목표 IRR 입력 */
 .pro .memo-head .memo-target .field.compact > label { font-size: var(--t-ui); color: var(--ink-2); }
+/* 「목표 충족 매입 단가」 토큰은 한 덩어리로만 개행 (줄 끝 「목표 충족」이 tone 「목표 미달」과 반대로 읽히지 않게, §4.7) */
+.pro .memo-head .nowrap { white-space: nowrap; }
 
 /* 결론 블록의 딜 규모·자본구조 한 줄 (memo-lender 아래, §4.7) */
 .pro .memo-deal { margin-top: var(--s2); font-size: var(--t-sm); line-height: 1.5; color: var(--muted); font-variant-numeric: tabular-nums; max-width: var(--measure-fine); }
@@ -28,6 +30,11 @@
 .pro .uw-summary .sum-links .to-top { margin-top: 0; color: var(--muted); }
 .pro .uw-summary .to-inputs { display: none; }
 .pro .uw-body .facts + .notes { margin-top: var(--s4); }
+/* 결과열 facts 4칸은 모두 라벨 줄 · 값 줄 · 산식 줄로 접어 값의 세로 위치를 맞춘다 (§4.3).
+   align-content를 고정하지 않으면 내용이 짧은 칸에서 남는 높이가 줄 사이에 분배되어 값이 13px 내려앉는다 */
+.pro .uw-body .facts > div { align-content: flex-start; }
+.pro .uw-body .facts > div > dt { flex: 0 0 100%; }
+.pro .uw-body .facts > div > dd > span { display: block; margin-left: 0; }
 
 /* 한계선 3열: key 12px --muted + value num-lg. 세 번째 칸 facts는 얇은 괘선으로 */
 .pro .limit-key { line-height: 1.45; }
@@ -74,11 +81,17 @@
 }
 @media (max-width: 600px) {
   .pro .status > span { white-space: normal; }
+  /* 메타 한 줄: 위치 문구는 전문, 출처만 남는 폭에서 말줄임 (title에 전문, §4.5) */
   .pro .field-meta { flex-wrap: nowrap; }
-  .pro .field-meta > span { flex: 0 1 auto; min-width: 0; }
-  /* 라벨·값 44px + 파생 + 메타 3줄 행을 100px 안에 */
-  .pro .field { padding: 8px 0; row-gap: 2px; }
-  .pro .field > .seg-ctl { margin-top: 2px; }
+  .pro .field-meta > span:not(.src) { flex: 0 1 auto; min-width: 0; }
+  .pro .field-meta > .src { flex: 1 1 0; min-width: 5em; }
+  .pro .field-meta > .tag { padding: 1px 4px; }
+  /* 라벨·값 45px + 파생 1줄 + 메타 1줄(태그 15px) 행을 90px 이하로 (§8-13): 45 + 14.4 + 15 + row-gap 4 + padding 10 = 88.4 */
+  .pro .field { padding: 5px 0; row-gap: 2px; }
+  .pro .field-derived, .pro .field-meta, .pro .field-err { line-height: 1.2; }
+  .pro .field-derived:not(:has([aria-expanded="true"])) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* Seg 행(취득세): 라벨 18 + 세그먼트 42 + 파생 14.4 + gap 4 + padding 10 = 88.4 */
+  .pro .field > .seg-ctl { margin-top: 0; }
 }
 @media print {
   .pro .status, .pro .asset-tabs, .pro .basis, .pro .to-inputs { display: none; }

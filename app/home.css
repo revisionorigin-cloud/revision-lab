@@ -63,13 +63,19 @@
   .uw-summary { border-bottom: 1px solid var(--rule-2); }
 }
 
-/* ─── ≤600 입력 행 높이(§8-13): Seg 버튼 줄바꿈 금지, 파생 줄 안의 링크 패딩 제거, 행 여백 10px */
-@media (max-width: 600px) {
-  #inputs .field { padding: 10px 0; }
-  #inputs .field > .seg-ctl button { white-space: nowrap; padding: 6px 8px; line-height: 1.4; }
-  #inputs .field-derived .link, #inputs .field-meta .link { padding: 0; display: inline; }
-  #inputs .field .field-static { padding: 0 4px; }
-}
+/* ─── 연도표 하단 안내(§4.4 ≤860 「옆으로 밀면 나머지 열」). 넘칠 때만 렌더되고, 문구는 ≤860에서만 보인다 */
+.home-years-foot { padding-top: 8px; }
+.home-years-foot .m-only { display: none; }
+@media (max-width: 860px) { .home-years-foot .m-only { display: inline; } }
 
-/* ─── 파생 줄 안의 줄 구분(대출 금리 감응 · 빌릴 수 있는 돈 풀이): 한 줄씩 block */
+/* ─── 파생 줄 안의 줄 구분(대출 금리 감응 · 빌릴 수 있는 돈 풀이): 한 줄씩 block.
+   ≤600에서는 §4.5 「넘치면 ellipsis + title」을 따라 한 줄로 자른다(행 높이 90px 이하 · §8-13). 전문은 title에 있다.
+   예외(§8-13 행 높이 규칙의 명시적 예외): 「빌릴 수 있는 돈」 풀이(.field.static)와 대출 금리 감응(#h-rate 행)은 title이 터치에서
+   열리지 않으므로 2줄까지 풀어 보인다(-webkit-line-clamp 2). 이 두 행만 90px를 넘을 수 있다 */
 .field-derived .dl { display: block; }
+@media (max-width: 600px) {
+  #inputs .field .field-static { padding: 0 4px; }
+  #inputs .field-derived .dl { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  #inputs .field.static .field-derived .dl,
+  #inputs .field:has(#h-rate) .field-derived .dl { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; text-overflow: clip; }
+}

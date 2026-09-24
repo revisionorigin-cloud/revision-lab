@@ -53,6 +53,8 @@ const signedP = (v: number) => neg(`${v > 0 ? "+" : ""}${num(v, 2)}%p`);
 const getPath = (i: ProInput, key: string): unknown => { const [g, f] = key.split(".") as [Group, string]; return (i[g] as unknown as Record<string, unknown>)[f]; };
 
 function Sep() { return <span className="sep" aria-hidden="true">·</span>; }
+/** 파생값 문장. ≤600에서 한 줄 말줄임되므로 전문을 title로 (§4.5) */
+const dv = (s: string) => <span title={s}>{s}</span>;
 
 export default function ProApp() {
   const params = useSearchParams();
@@ -189,7 +191,7 @@ export default function ProApp() {
       <>
         Levered IRR {neg(pct(irr))}<Sep />
         <span className="memo-target">{targetField}</span> 대비 {diff}
-        {L.maxPrice !== null && priceGap !== null ? <><Sep />목표{" "}충족 {isRental ? "매입 단가" : "매입가"} {maxPriceTxt} ({maxTotalTxt}현재 대비 {neg(pctv(priceGap, 1, true))})</> : null}
+        {L.maxPrice !== null && priceGap !== null ? <><Sep /><span className="nowrap">목표 충족 {isRental ? "매입 단가" : "매입가"}</span> {maxPriceTxt} ({maxTotalTxt}현재 대비 {neg(pctv(priceGap, 1, true))})</> : null}
         {agg ? <><Sep />공격적 가정 {V.tally.aggressive}개에 의존</> : null}
       </>
     );
@@ -225,7 +227,9 @@ export default function ProApp() {
   const snapTxt = market ? (market.meta.mode === "live" ? `실거래가 OpenAPI ${market.meta.fetchedAt}` : `실거래가 ${ymOf(market.meta.to)} 스냅샷`) : "실거래가 불러오는 중";
   const ratesTxt = rates ? `금리 ECOS ${rates.fetchedAt}${rates.live ? "" : " (마지막 확인값)"}` : "금리 불러오는 중";
   const objectTxt = isRental ? `${num(input.rental.units)}세대 ${basis?.complexKey ? "물건" : "가상 물건"}` : PRO_ASSET_LABEL[asset];
-  const basisText = `가정 기준 · ${isRental ? basis?.label ?? "직접 입력" : "직접 입력"} · ${objectTxt} · ${snapTxt} · ${ratesTxt}`;
+  /** 오피스·물류는 실거래가를 쓰지 않으므로 근거 줄·CSV 머리·인쇄 머리줄에 스냅샷을 인용하지 않는다 (§4.7(5) · §4.14) */
+  const dataTxt = isRental ? snapTxt : "렌트롤·관리비 수지";
+  const basisText = `가정 기준 · ${isRental ? basis?.label ?? "직접 입력" : "직접 입력"} · ${objectTxt} · ${dataTxt} · ${ratesTxt}`;
   const navBasis = isRental ? (basis ? `${basis.label} · ${num(input.rental.units)}세대${edited ? " · 수정됨" : ""}` : "시장값 불러오는 중") : `${PRO_ASSET_LABEL[asset]} · 직접 입력${edited ? " · 수정됨" : ""}`;
   const readouts = [
     { label: "Levered IRR", value: idle ? "" : fmtRo(irr, "pct"), href: "#memo" },
@@ -289,8 +293,10 @@ export default function ProApp() {
       const fmtP = (v: number) => (isRental ? num(v) : eok(v));
       return { rowKey: isRental ? "rental.pricePerPy" : "office.price", rowVals, colKey: "cap.exitCapPct", colVals: axis(input.cap.exitCapPct, 0.25, 5, 0.25), metric: "leveredIrr", title: `${isRental ? "매입 단가" : "매입가"} × Exit Cap → Levered IRR`, rowLabel: isRental ? "단가" : "매입가", colLabel: "Exit Cap", fmtRow: (v) => (v === mp ? `${fmtP(v)} 목표` : fmtP(v)), fmtCol: (v) => pctv(v, 2), threshold: target / 100, scale: 0.08, floor: 0 };
     })();
+    // 보증금 행 축은 step ≤ 현재값/2 로 잡아 lib axis()가 시작점을 0으로 클램프하지 않게 한다. 그래야 현재값이 중앙 행에 오고 기준칸이 KPI와 같은 값이 된다 (§4.9)
+    const depStep = (() => { const half = input.rental.depositPerUnit / 2; const u = half >= 100 ? 100 : 10; return Math.max(10, Math.min(1500, Math.floor(half / u) * u)); })();
     const g4: GridSpec = isRental
-      ? { rowKey: "rental.depositPerUnit", rowVals: axis(input.rental.depositPerUnit, Math.max(500, Math.round(input.rental.depositPerUnit / 2 / 500) * 500), 5, 0), colKey: "cap.ltvPct", colVals: axis(input.cap.ltvPct, 5, 5, 0), metric: "leveredIrr", title: "세대당 보증금 × LTV → Levered IRR", rowLabel: "보증금", colLabel: "LTV", fmtRow: (v) => `${num(v)}만원`, fmtCol: (v) => pctv(v, 0), threshold: target / 100, scale: 0.08, floor: 0 }
+      ? { rowKey: "rental.depositPerUnit", rowVals: axis(input.rental.depositPerUnit, depStep, 5, 0), colKey: "cap.ltvPct", colVals: axis(input.cap.ltvPct, 5, 5, 0), metric: "leveredIrr", title: "세대당 보증금 × LTV → Levered IRR", rowLabel: "보증금", colLabel: "LTV", fmtRow: (v) => `${num(v)}만원`, fmtCol: (v) => pctv(v, 0), threshold: target / 100, scale: 0.08, floor: 0 }
       : { rowKey: "office.rentPerPy", rowVals: axis(input.office.rentPerPy, Math.max(0.25, Math.round(input.office.rentPerPy * 0.05 * 4) / 4), 5, 0.25), colKey: "cap.ltvPct", colVals: axis(input.cap.ltvPct, 5, 5, 0), metric: "leveredIrr", title: "임대료 × LTV → Levered IRR", rowLabel: "임대료/평", colLabel: "LTV", fmtRow: (v) => `${num(v, 2)}만`, fmtCol: (v) => pctv(v, 0), threshold: target / 100, scale: 0.08, floor: 0 };
     return [g1, g2, g3, g4].map((spec) => ({ spec, v: proGrid(input, spec) }));
   }, [input, isRental, target, L.maxPrice]);
@@ -310,7 +316,7 @@ export default function ProApp() {
         <figcaption>{spec.title} <HeatLegendMarks pos={isDscr ? "DSCR 1.2x 이상" : `목표 ${pctv(target, 1)} 이상`} neg="미만" note={`굵은 테두리 현재 가정 · 붉은 테두리 ${isDscr ? "DSCR 1.0x 미만" : "원금 손실"}`} /></figcaption>
         <Heat rowLabel={spec.rowLabel} colLabel={spec.colLabel} rows={rows} cols={cols} values={v} fmt={fmt} fmtBase={fmtBase}
           threshold={spec.threshold} thresholdLabel={isDscr ? "DSCR 1.2x" : `목표 IRR ${pctv(target, 1)}`} scale={spec.scale} centerRow={cr} centerCol={cc} floor={spec.floor} title={spec.title}
-          readLabel={(ri, ci, x) => `${spec.rowLabel} ${rows[ri]} × ${spec.colLabel} ${cols[ci]} → ${isDscr ? "DSCR" : "IRR"} ${fmt(x)} (현재 ${fmtBase(base)})`} />
+          readLabel={(ri, ci, x) => `${spec.rowLabel} ${rows[ri]} × ${spec.colLabel} ${cols[ci]} → ${isDscr ? "DSCR" : "IRR"} ${fmtBase(x)} (현재 ${fmtBase(base)})`} />
         {spec.rowKey === "rental.depositPerUnit" && legalCapPct !== null ? <p className="fine">전환율 {pctv(input.rental.convRatePct, 2)}는 보증금의 실질 조달비용입니다. 기존 임차인의 보증금을 월세로 돌릴 때는 법정 상한 {pctv(legalCapPct, 2)}(기준금리 + 2%p, {RULES.rent.basis})가 적용됩니다.</p> : null}
       </figure>
     );
@@ -367,9 +373,10 @@ export default function ProApp() {
     const fx = (v: number | null | undefined, d: number) => (v === null || v === undefined || !Number.isFinite(v) ? "" : v.toFixed(d));
     const rows: string[][] = [];
     const P = (...cells: (string | number | null | undefined)[]) => { rows.push(cells.map(q)); };
-    const A = (label: string, v: string | number, unit: string, key?: string) => P(label, v, unit, key ? from[key] ?? "" : "", key ? pos[key]?.text ?? "" : "");
+    // 출처(from)는 임대주택 채우기의 provenance라 오피스·물류 탭에서는 쓰지 않는다 (화면 fp()와 같은 규칙)
+    const A = (label: string, v: string | number, unit: string, key?: string) => P(label, v, unit, key && isRental ? from[key] ?? "" : "", key ? pos[key]?.text ?? "" : "");
     const c = input.cap;
-    P("RE:LAB Model Desk Pro", navBasis, snapTxt, ratesTxt);
+    P("RE:LAB Model Desk Pro", navBasis, dataTxt, ratesTxt, `결론 · ${toneLabel}`);
     P();
     P("가정", "값", "단위", "출처", "시장 대비 위치");
     if (isRental) {
@@ -438,6 +445,10 @@ export default function ProApp() {
     P(isRental ? "최대 매입 단가" : "최대 매입가", L.maxPrice === null ? "" : n0(L.maxPrice), isRental ? "만원/전용평" : "만원", `목표 Levered IRR ${target}%를 맞추는 ${isRental ? "단가" : "매입가"}`);
     P("자기자본 원금 보전선 Exit Cap", fx(L.capitalPreserve?.exitCapPct, 2), "%", "Equity Multiple = 1.0x가 되는 Exit Cap");
     P("대주 상환 한계선 Exit Cap", fx(L.debtCover?.exitCapPct, 2), "%", "매각대금으로 대출·보증금을 전액 상환하는 마지막 Exit Cap");
+    P("원금 보전선 매각가 대비", fx(L.capitalPreserve ? L.capitalPreserve.saleVsPrice * 100 : null, 1), "%", "Equity Multiple = 1.0x가 되는 매각가의 매입가 대비 변화율");
+    P("대주 한계선 매각가 대비", fx(L.debtCover ? L.debtCover.saleVsPrice * 100 : null, 1), "%", "대출·보증금을 전액 상환하는 마지막 매각가의 매입가 대비 변화율");
+    P("DSCR 1.2x 대출금리", fx(L.rateAtDscr, 2), "%", c.amortType === "bullet" ? "1년차 DSCR이 1.2x가 되는 대출금리" : "만기일시상환에서만 산출");
+    if (r.breakevenOcc !== null) P("1년차 손익분기 입주율", fx(r.breakevenOcc * 100, 1), "%", "1년차 원리금을 딱 갚는 입주율");
     P("매입가", n0(r.price), "만원", "");
     P("취득부대비", n0(r.acqCost), "만원", "취득세 + 기타 취득부대비");
     P("총 취득원가 (사용)", n0(r.uses), "만원", "매입가 + 취득부대비");
@@ -470,6 +481,13 @@ export default function ProApp() {
     if (c.taxMode === "corp") P("양도 법인세", n0(-r.exitTax));
     if (r.pref > 0) P("우선주 정산", n0(-r.prefBack));
     P("매각 순수령", n0(r.saleNetToEquity));
+    // (4) 03 한계선의 민감도 표 4개. 첫 열이 행 가정, 머리 행이 열 가정. IRR은 %, DSCR은 배수 2자리 (IC 메모 부록용)
+    for (const { spec, v } of grids) {
+      const isDscr = spec.metric === "minDscr";
+      P();
+      P(`민감도 · ${spec.title} (${isDscr ? "x" : "%"})`, ...spec.colVals.map(spec.fmtCol));
+      spec.rowVals.forEach((rv, ri) => P(spec.fmtRow(rv), ...spec.colVals.map((_, ci) => { const x = v[ri]?.[ci] ?? null; return x === null ? "" : fx(isDscr ? x : x * 100, 2); })));
+    }
     const stamp = market ? ymOf(market.meta.to) : new Date().toISOString().slice(0, 10);
     const csv = "﻿" + rows.map((x) => x.join(",")).join("\r\n");
     const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })); a.download = `relab-pro-${isRental ? `${code}-` : ""}${asset}-${stamp}.csv`; a.click(); URL.revokeObjectURL(a.href);
@@ -490,7 +508,7 @@ export default function ProApp() {
 
   const benchAsOf = rates?.rates.find((x) => x.id === bench)?.asOf;
   const benchMeta = !rates ? "금리를 불러오는 중입니다" : bench === "manual" ? "직접 입력한 기준금리로 계산합니다" : `ECOS ${benchAsOf ?? rates.fetchedAt} · ${rates.live ? `조회 ${rates.fetchedAt}` : "마지막 확인값"}`;
-  const printHead = `RE:LAB · Model Desk Pro · ${isRental && market ? `${market.meta.name} ${market.meta.asset} ${bandLabel}` : PRO_ASSET_LABEL[asset]} · 조회 ${market?.meta.fetchedAt ?? rates?.fetchedAt ?? ""}`;
+  const printHead = `RE:LAB · Model Desk Pro · ${isRental && market ? `${market.meta.name} ${market.meta.asset} ${bandLabel}` : PRO_ASSET_LABEL[asset]} · 조회 ${(isRental ? market?.meta.fetchedAt : undefined) ?? rates?.fetchedAt ?? ""}`;
   const summaryCost = `운영비 ${pcs(input.rental.opexPct)} · 적립 ${pcs(input.rental.capexPct)} · 보유세 ${pcs(input.rental.holdTaxPct)}`;
   const summaryOfficeCost = `운영비 ${num(input.office.opexPerPy, 2)}만원/평 · 상승률 ${pcs(input.office.opexGrowthPct)} · 운용보수 ${pcs(input.office.aumFeePct)}`;
   const summaryPref = input.cap.prefAmt > 0 ? `${eok(input.cap.prefAmt)} · ${pcs(input.cap.prefRatePct)}` : "우선주 없음";
@@ -571,18 +589,18 @@ export default function ProApp() {
                 </p>
                 <fieldset><legend>자산</legend>
                   <NumField label="세대수" unit="세대" value={input.rental.units} step={1} min={1} onChange={(v) => set("rental", "units", Math.round(v))} {...fp("rental.units")} />
-                  <NumField label="세대당 전용면적" unit="평" value={input.rental.areaPy} step={0.1} min={1} onChange={(v) => set("rental", "areaPy", v)} {...fp("rental.areaPy")} derived={`= ${num(input.rental.areaPy * PY, 1)}㎡ · 총 전용 ${num(r.gla, 0)}평`} />
-                  <NumField label="매입 단가" unit="만원/평" value={input.rental.pricePerPy} step={10} min={1} onChange={(v) => set("rental", "pricePerPy", v)} {...fp("rental.pricePerPy")} derived={`전용평당 · 매입가 ${eok(r.price)} · 세대당 ${num(r.price / input.rental.units / 10000, 2)}억`} />
+                  <NumField label="세대당 전용면적" unit="평" value={input.rental.areaPy} step={0.1} min={1} onChange={(v) => set("rental", "areaPy", v)} {...fp("rental.areaPy")} derived={dv(`= ${num(input.rental.areaPy * PY, 1)}㎡ · 총 전용 ${num(r.gla, 0)}평`)} />
+                  <NumField label="매입 단가" unit="만원/평" value={input.rental.pricePerPy} step={10} min={1} onChange={(v) => set("rental", "pricePerPy", v)} {...fp("rental.pricePerPy")} derived={dv(`전용평당 · 매입가 ${eok(r.price)} · 세대당 ${num(r.price / input.rental.units / 10000, 2)}억`)} />
                 </fieldset>
                 <fieldset><legend>취득</legend>
                   <Seg id="acq-tax" label="취득세" term="취득세" value={acqTaxMode} options={[{ id: "offi", label: "오피스텔 4.6%" }, { id: "corp", label: "법인 중과 12.4%" }, { id: "custom", label: "직접 입력" }]}
                     onChange={(m) => { setAcqTaxMode(m); if (m === "offi") set("rental", "acqTaxPct", 4.6); else if (m === "corp") set("rental", "acqTaxPct", 12.4); }}
                     derived={acqTaxMode === "custom" ? undefined : `매입가 대비 ${pcs(input.rental.acqTaxPct)} · ${eok(r.price * input.rental.acqTaxPct / 100)}`} />
-                  {acqTaxMode === "custom" ? <NumField label="취득세 직접 입력" unit="%" value={input.rental.acqTaxPct} step={0.1} min={0} max={20} onChange={(v) => set("rental", "acqTaxPct", v)} derived={`매입가 대비 · ${eok(r.price * input.rental.acqTaxPct / 100)}`} /> : null}
-                  <NumField label="기타 취득부대비" unit="%" value={input.rental.acqCostPct} step={0.1} min={0} max={20} onChange={(v) => set("rental", "acqCostPct", v)} derived={`매입가 대비 · 취득부대비 합계 ${eok(r.acqCost)}`} />
+                  {acqTaxMode === "custom" ? <NumField label="취득세 직접 입력" unit="%" value={input.rental.acqTaxPct} step={0.1} min={0} max={20} onChange={(v) => set("rental", "acqTaxPct", v)} derived={dv(`매입가 대비 · ${eok(r.price * input.rental.acqTaxPct / 100)}`)} /> : null}
+                  <NumField label="기타 취득부대비" unit="%" value={input.rental.acqCostPct} step={0.1} min={0} max={20} onChange={(v) => set("rental", "acqCostPct", v)} derived={dv(`매입가 대비 · 취득부대비 합계 ${eok(r.acqCost)}`)} />
                 </fieldset>
                 <fieldset><legend>임대</legend>
-                  <NumField label="환산월세" term="환산월세" unit="만원" value={input.rental.effRentPerPy} step={0.1} min={0} onChange={(v) => set("rental", "effRentPerPy", v)} {...fp("rental.effRentPerPy")} derived={`전용평당 월 · 세대당 환산월세 ${num(input.rental.effRentPerPy * input.rental.areaPy, 1)}만원`} />
+                  <NumField label="환산월세" term="환산월세" unit="만원" value={input.rental.effRentPerPy} step={0.1} min={0} onChange={(v) => set("rental", "effRentPerPy", v)} {...fp("rental.effRentPerPy")} derived={dv(`전용평당 월 · 세대당 환산월세 ${num(input.rental.effRentPerPy * input.rental.areaPy, 1)}만원`)} />
                   <NumField label="세대당 보증금" unit="만원" value={input.rental.depositPerUnit} step={100} min={0} onChange={(v) => set("rental", "depositPerUnit", v)} {...fp("rental.depositPerUnit")} derived={<>월세 현금 {num(r.cashRentPerUnit, 1)}만원/세대 · <Term k="승계 보증금" /> {eok(r.deposits)}</>} />
                   <NumField label="전월세전환율" term="전월세전환율" unit="%" value={input.rental.convRatePct} step={0.05} min={0} max={20} onChange={(v) => set("rental", "convRatePct", v)} {...fp("rental.convRatePct")} />
                   <NumField label="안정화 공실률" unit="%" value={input.rental.vacancyPct} step={0.5} min={0} max={100} onChange={(v) => set("rental", "vacancyPct", v)} {...fp("rental.vacancyPct")} />
@@ -592,25 +610,25 @@ export default function ProApp() {
                   <summary>비용 <span>{summaryCost}</span></summary>
                   <NumField label="운영비 (EGI 대비)" unit="%" value={input.rental.opexPct} step={0.5} min={0} max={100} onChange={(v) => set("rental", "opexPct", v)} {...fp("rental.opexPct")} />
                   <NumField label="수선 · 교체 적립 (EGI 대비)" unit="%" value={input.rental.capexPct} step={0.5} min={0} max={100} onChange={(v) => set("rental", "capexPct", v)} />
-                  <NumField label="보유세" term="보유세" unit="%" value={input.rental.holdTaxPct} step={0.05} min={0} max={10} onChange={(v) => set("rental", "holdTaxPct", v)} derived="매입가 대비 연 · 재산세·도시지역분·지방교육세 합계. 주거용 과세 시 종부세 추가" />
+                  <NumField label="보유세" term="보유세" unit="%" value={input.rental.holdTaxPct} step={0.05} min={0} max={10} onChange={(v) => set("rental", "holdTaxPct", v)} derived={dv("매입가 대비 연 · 재산세·도시지역분·지방교육세 합계. 주거용 과세 시 종부세 추가")} />
                 </details>
               </>
             ) : (
               <>
                 <p className="basis-note">임대료·관리비·운영비는 렌트롤과 관리비 수지에서 직접 입력합니다. 공개 실거래가에 이 자산의 임대료가 없어 시장 대비 위치 표시는 없습니다. 자본구조·매각 가정은 임대주택 탭의 시장값을 물려받지 않고 기본값 LTV {pcs(CAP_DEFAULT.ltvPct)} · Exit Cap {pcs(CAP_DEFAULT.exitCapPct)}에서 출발합니다.</p>
                 <fieldset><legend>자산</legend>
-                  <NumField label="매입가" unit="만원" value={input.office.price} step={10000} min={1} onChange={(v) => set("office", "price", v)} position={pos["office.price"]} derived={`연면적 평당 ${num(input.office.price / input.office.gfaPy, 0)}만원`} />
+                  <NumField label="매입가" unit="만원" value={input.office.price} step={10000} min={1} onChange={(v) => set("office", "price", v)} position={pos["office.price"]} derived={dv(`연면적 평당 ${num(input.office.price / input.office.gfaPy, 0)}만원`)} />
                   <NumField label="연면적" unit="평" value={input.office.gfaPy} step={10} min={1} onChange={(v) => set("office", "gfaPy", v)} />
-                  <NumField label="전용률" unit="%" value={input.office.effRatioPct} step={1} min={1} max={100} onChange={(v) => set("office", "effRatioPct", v)} derived={`임대면적 ${num(r.gla, 0)}평`} />
+                  <NumField label="전용률" unit="%" value={input.office.effRatioPct} step={1} min={1} max={100} onChange={(v) => set("office", "effRatioPct", v)} derived={dv(`임대면적 ${num(r.gla, 0)}평`)} />
                 </fieldset>
                 <fieldset><legend>취득</legend>
-                  <NumField label="취득세" term="취득세" unit="%" value={input.office.acqTaxPct} step={0.1} min={0} max={20} onChange={(v) => set("office", "acqTaxPct", v)} derived={`매입가 대비 · ${eok(input.office.price * input.office.acqTaxPct / 100)}`} />
-                  <NumField label="기타 취득부대비" unit="%" value={input.office.acqCostPct} step={0.1} min={0} max={20} onChange={(v) => set("office", "acqCostPct", v)} derived={`매입가 대비 · 취득부대비 합계 ${eok(r.acqCost)}`} />
+                  <NumField label="취득세" term="취득세" unit="%" value={input.office.acqTaxPct} step={0.1} min={0} max={20} onChange={(v) => set("office", "acqTaxPct", v)} derived={dv(`매입가 대비 · ${eok(input.office.price * input.office.acqTaxPct / 100)}`)} />
+                  <NumField label="기타 취득부대비" unit="%" value={input.office.acqCostPct} step={0.1} min={0} max={20} onChange={(v) => set("office", "acqCostPct", v)} derived={dv(`매입가 대비 · 취득부대비 합계 ${eok(r.acqCost)}`)} />
                 </fieldset>
                 <fieldset><legend>운영 수입</legend>
-                  <NumField label="NOI 직접 입력 (연, 선택)" unit="만원" value={input.office.noiDirect} step={1000} min={0} onChange={(v) => set("office", "noiDirect", v)} derived="IM의 안정화 NOI를 그대로 쓸 때. 0이면 아래 임대료로 계산합니다" />
+                  <NumField label="NOI 직접 입력 (연, 선택)" unit="만원" value={input.office.noiDirect} step={1000} min={0} onChange={(v) => set("office", "noiDirect", v)} derived={dv("IM의 안정화 NOI를 그대로 쓸 때. 0이면 아래 임대료로 계산합니다")} />
                   <NumField label="임대료 (임대면적 평당 월)" unit="만원" value={input.office.rentPerPy} step={0.1} min={0} onChange={(v) => set("office", "rentPerPy", v)} position={pos["office.rentPerPy"]} />
-                  <NumField label="관리비 순수입 (평당 월)" unit="만원" value={input.office.mgmtNetPerPy} step={0.1} min={0} onChange={(v) => set("office", "mgmtNetPerPy", v)} derived="관리비 수입에서 실비를 뺀 마진" />
+                  <NumField label="관리비 순수입 (평당 월)" unit="만원" value={input.office.mgmtNetPerPy} step={0.1} min={0} onChange={(v) => set("office", "mgmtNetPerPy", v)} derived={dv("관리비 수입에서 실비를 뺀 마진")} />
                   <NumField label="공실률" unit="%" value={input.office.vacancyPct} step={0.5} min={0} max={100} onChange={(v) => set("office", "vacancyPct", v)} position={pos["office.vacancyPct"]} />
                   <NumField label="기타 수입 (연)" unit="만원" value={input.office.otherIncome} step={100} min={0} onChange={(v) => set("office", "otherIncome", v)} />
                   <NumField label="보증금 (임대면적 평당)" unit="만원" value={input.office.depositPerPy} step={5} min={0} onChange={(v) => set("office", "depositPerPy", v)} derived={<><Term k="승계 보증금" /> {eok(r.deposits)} · 운용수익률 {pctv(input.office.depositRatePct, 1)}</>} />
@@ -642,7 +660,7 @@ export default function ProApp() {
                   <div className="field-meta"><span className="src" title={benchMeta}>{benchMeta}</span></div>
                 </div>
               )}
-              <NumField label="가산금리 (bp)" term="가산금리 (bp)" unit="bp" value={input.cap.spreadBp} step={10} min={0} max={1000} onChange={(v) => set("cap", "spreadBp", v)} {...fp("cap.spreadBp")} derived={`대출금리 ${pctv(allIn, 2)} · 1년차 이자 ${eok(r.years[0]?.interest ?? 0)}`} />
+              <NumField label="가산금리 (bp)" term="가산금리 (bp)" unit="bp" value={input.cap.spreadBp} step={10} min={0} max={1000} onChange={(v) => set("cap", "spreadBp", v)} {...fp("cap.spreadBp")} derived={dv(`대출금리 ${pctv(allIn, 2)} · 1년차 이자 ${eok(r.years[0]?.interest ?? 0)}`)} />
               <Seg id="amort" label="상환 방식" term="상환 방식" value={input.cap.amortType} options={[{ id: "bullet", label: "만기일시" }, { id: "annuity", label: "원리금균등" }, { id: "straight", label: "원금균등" }]} onChange={(v) => set("cap", "amortType", v as AmortType)} />
               {input.cap.amortType !== "bullet" ? <NumField label="상환 기간" unit="년" value={input.cap.amortYears} step={1} min={1} max={40} onChange={(v) => set("cap", "amortYears", Math.round(v))} /> : null}
               <details className="adv" ref={(el) => { advRefs.current.pref = el; }}>
@@ -653,7 +671,7 @@ export default function ProApp() {
             </fieldset>
             <fieldset><legend>매각</legend>
               <NumField label="보유기간" unit="년" value={input.cap.holdYears} step={1} min={1} max={15} onChange={(v) => set("cap", "holdYears", Math.round(v))} />
-              <NumField label="Exit Cap" term="Exit Cap" unit="%" value={input.cap.exitCapPct} step={0.05} min={0.5} max={20} onChange={(v) => set("cap", "exitCapPct", v)} {...fp("cap.exitCapPct")} derived={`매각가 ${eok(r.saleValue)} · 매입가 대비 ${neg(pctv((r.saleValue / r.price - 1) * 100, 1, true))}`} />
+              <NumField label="Exit Cap" term="Exit Cap" unit="%" value={input.cap.exitCapPct} step={0.05} min={0.5} max={20} onChange={(v) => set("cap", "exitCapPct", v)} {...fp("cap.exitCapPct")} derived={dv(`매각가 ${eok(r.saleValue)} · 매입가 대비 ${neg(pctv((r.saleValue / r.price - 1) * 100, 1, true))}`)} />
               <details className="adv" ref={(el) => { advRefs.current.sale = el; }}>
                 <summary>매각 비용 · 과세 <span>{summarySale}</span></summary>
                 <NumField label="매각 비용 (매각가 대비)" unit="%" value={input.cap.saleCostPct} step={0.1} min={0} max={10} onChange={(v) => set("cap", "saleCostPct", v)} />
@@ -679,7 +697,7 @@ export default function ProApp() {
               <div><dt><Term k="진입 Cap" /></dt><dd>{neg(pct(r.goingInCap))}<span>{isRental ? "NOI ÷ (매입가 − 보증금)" : "NOI ÷ 매입가"}</span></dd></div>
               <div><dt><Term k="Yield on Cost" /></dt><dd>{neg(pct(r.yieldOnCost))}<span>{isRental ? "NOI ÷ (취득원가 − 보증금)" : "NOI ÷ 취득원가"}</span></dd></div>
               <div><dt><Term k="Debt Yield" /></dt><dd>{neg(pct(r.debtYield))}<span>NOI ÷ 대출</span></dd></div>
-              <div><dt>1년차 NOI</dt><dd>{neg(eok(r.years[0]?.noi, 2))}</dd></div>
+              <div><dt>1년차 NOI</dt><dd>{neg(eok(r.years[0]?.noi, 2))}<span>{isRental ? "EGI − 운영비·적립 − 보유세" : "EGI − 운영비"}</span></dd></div>
             </dl>
             {notes.length > 0 ? <ul className="notes">{notes.map((n, k) => <li key={k} className={`note-${n.tone}`}>{n.text}</li>)}</ul> : null}
             <h3>조달과 사용</h3>
