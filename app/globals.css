@@ -310,6 +310,9 @@ legend { padding: 0 0 8px; width: 100%; color: var(--ink); border-bottom: 1px so
 .field-meta, .field-pos, .field-src { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; font-size: var(--t-sm); line-height: 1.45; color: var(--muted); min-width: 0; }
 .field-meta > span, .field-pos > span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .field-meta .src, .field-src { color: var(--faint); }
+/* 메타·파생 줄 안의 링크(되돌리기·지표로 되돌리기): overflow hidden 상자 안에서도 포커스 링(2px + offset 2px)이 잘리지 않게 여백을 두고 같은 값의 음수 margin으로 배치를 상쇄한다 (§8-24). */
+.field-meta > span:has(> .link), .field-derived:has(> .link) { padding: 5px; margin: -5px; }
+.field-meta .link, .field-derived .link { font-size: inherit; } /* 12px 줄 안의 링크는 줄 높이를 키우지 않는다 (§8-13 행 90px) */
 .field-derived { grid-column: 1 / -1; font-size: var(--t-sm); line-height: 1.45; color: var(--ink-2); font-variant-numeric: tabular-nums; }
 .field-err { grid-column: 1 / -1; font-size: var(--t-sm); line-height: 1.45; color: var(--neg); }
 .field-err.note { color: var(--muted); }
@@ -604,7 +607,7 @@ dfn { font-style: normal; text-decoration: underline dotted var(--faint); text-u
   .subnav-sec, .ro-group { display: none; }
   .prod-nav { gap: 20px; }
   .prod-nav a { min-height: 44px; align-items: center; padding: 0; }
-  .subnav-in { min-height: 44px; }
+  .subnav-in { min-height: 44px; overflow: visible; } /* 2항목이 390에 수납되므로 스크롤 불필요 · 44px 탭의 포커스 링이 잘리지 않게 */
   .btn { min-height: 44px; }
   .link { display: inline-block; padding: 10px 0; }
   .sec-aside .link { padding: 6px 0; }
@@ -749,7 +752,8 @@ dfn { font-style: normal; text-decoration: underline dotted var(--faint); text-u
   .intro, .hero { padding: 0 0 16px; }
   h1 { font-size: 22px; }
   .sec { padding: 14px 0 20px; }
-  figure, .kpi, .limit, table, .memo, .answers { break-inside: avoid; }
+  figure, .kpi, .limit, table, .memo, .answers, .cfbars, .stack-bar, .stack-legend { break-inside: avoid; }
+  h3 { break-after: avoid; }
   .memo { break-after: avoid; }
   /* A4 지면(14mm 여백 후 약 688px)에서는 입력열 → 결과열 순으로 1열 스택 · 2열이면 연도별 현금흐름표가 잘린다 */
   .uw { display: block; }
@@ -765,8 +769,10 @@ dfn { font-style: normal; text-decoration: underline dotted var(--faint); text-u
   .chart .line { stroke: #111; }
   .chart .dot { fill: #111; stroke: #fff; }
   /* 산점도 원은 아이보리 고정값이라 흰 지면에서 사라진다 · 검정 윤곽, 선택 원만 골드 */
-  .bubble { fill: rgba(0, 0, 0, .06); stroke: rgba(0, 0, 0, .6); stroke-width: 1; }
+  .bubble { fill: rgba(0, 0, 0, .06); stroke: rgba(0, 0, 0, .6); stroke-width: 1; transition: none; }
   .bubble.on, .bubble[aria-pressed="true"] { fill: rgba(138, 111, 62, .15); stroke: var(--gold); stroke-width: 2; }
+  /* 배경 그래픽 끔 기준: 아이보리 채움 선택 상태(세그먼트·자산 탭)는 채움 대신 굵기·밑줄로 표시 */
+  .seg-ctl button.on, .seg-ctl button[aria-checked="true"], .seg-ctl button[aria-pressed="true"], .asset-tabs button.on, .asset-tabs button[aria-selected="true"] { background: transparent; color: #111; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
   .data tr.sel { background: transparent !important; box-shadow: none; }
   .data:not(.kv) td:first-child, .data:not(.kv) th:first-child { position: static; background: transparent; box-shadow: none; }
   .table-wrap { background: none; overflow: visible; }
