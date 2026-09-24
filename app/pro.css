@@ -1,0 +1,86 @@
+/* Model Desk Pro 전용 규칙 · DESIGN_SPEC §5.3. 공통 규칙은 app/globals.css.
+   app/pro/page.tsx 가 import 하며 전역으로 실리므로 모든 선택자를 main.pro 아래에 둔다. */
+
+/* 입력 그룹 이름은 국문 소형 라벨(kicker-ko) */
+.pro legend { font-family: var(--font); font-size: var(--t-xs); font-weight: 500; letter-spacing: .12em; text-transform: none; color: var(--ink); }
+
+/* 가정 기준 행 · 되돌리기 */
+.pro .basis > div { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; min-width: 0; }
+.pro .basis > div > b:not(.basis-edited) { font-weight: 500; }
+
+/* 가정 집계는 문장 속에 inline (globals의 flex gap이 낱말 사이를 벌리지 않게) */
+.pro .memo-basis .tally { display: inline; }
+
+/* 입력열: 접힌 비용 그룹과 다음 fieldset 사이 간격 */
+.pro .uw-inputs > details.adv { margin-bottom: var(--s6); }
+
+/* 결론 문장 안 목표 IRR 입력 */
+.pro .memo-head .memo-target .field.compact > label { font-size: var(--t-ui); color: var(--ink-2); }
+
+/* 결론 블록의 딜 규모·자본구조 한 줄 (memo-lender 아래, §4.7) */
+.pro .memo-deal { margin-top: var(--s2); font-size: var(--t-sm); line-height: 1.5; color: var(--muted); font-variant-numeric: tabular-nums; max-width: var(--measure-fine); }
+
+/* 결과열은 입력열 높이만큼 늘려 요약(sticky)이 02 절 전체를 따라온다 (§4.7 · 수용 기준 7) */
+.pro .uw-results { align-self: stretch; }
+.pro .uw-body { min-width: 0; }
+.pro .uw-summary .headline { color: var(--ink); }
+.pro .uw-summary .sum-links { display: flex; gap: 16px; margin-top: 6px; font-size: var(--t-sm); }
+.pro .uw-summary .sum-links .to-top { margin-top: 0; color: var(--muted); }
+.pro .uw-summary .to-inputs { display: none; }
+.pro .uw-body .facts + .notes { margin-top: var(--s4); }
+
+/* 한계선 3열: key 12px --muted + value num-lg. 세 번째 칸 facts는 얇은 괘선으로 */
+.pro .limit-key { line-height: 1.45; }
+.pro .limit-value .u { color: var(--ink-2); }
+.pro .limit .facts.col { margin-top: var(--s3); }
+.pro .limit .facts.col dt { white-space: normal; }
+
+/* 히트맵 3개 + 읽는 법(4번째 칸) · 보조 표(보증금 × LTV)는 읽는 법 아래 접힘 */
+.pro .heats .howto { margin-top: var(--s6); padding-top: 4px; }
+.pro .heats .howto h3 { margin: 0 0 10px; }
+.pro .heats .howto p + p { margin-top: 10px; }
+.pro .heats figure .fine { margin-top: 12px; }
+.pro .heats .heat-more { margin-top: var(--s4); border-bottom: 0; }
+.pro .heats .heat-more > summary { font-size: var(--t-ui); font-weight: 600; }
+.pro .heats .heat-more > summary span { font-weight: 400; color: var(--muted); margin-left: 8px; }
+.pro .heats .heat-more figure { margin-top: var(--s4); }
+
+/* 01 시장 절 머리의 덮어쓰기 확인 notice (버튼 자리) */
+.pro .sec-aside .notice, .pro .detail-head .notice { margin-bottom: 0; }
+.pro .fill-confirm { display: inline-block; }
+
+/* 필드 메타: 데스크톱은 문장을 자르지 않고 감싼다(2줄), ≤600에서만 한 줄 · ellipsis (title에 전문, §8-13 행 높이 90px) */
+.pro .field-meta > .tag { flex: none; }
+@media (min-width: 601px) { .pro .field-meta > span { white-space: normal; } }
+
+/* 히어로 status 항목 */
+.pro .status > span { display: inline-flex; align-items: baseline; gap: 6px; white-space: nowrap; }
+
+/* 현금흐름표: 행 제목은 줄바꿈 없이 */
+.pro .data.tight tbody th { white-space: nowrap; min-width: 0; }
+
+/* 모바일 하단 시트 */
+.pro .mbar-sheet > p:last-child { margin-top: 12px; }
+.pro .mbar-ro > span { display: inline-flex; align-items: baseline; gap: 2px; min-width: 0; }
+
+/* ≤860 순서: 요약 → 「가정 고치기 ↓」 → 입력 → 나머지 결과 (§5.3 모바일 · §8-10). Home과 같은 방식 */
+@media (max-width: 860px) {
+  .pro .uw-results { display: contents; }
+  .pro .uw-summary { order: -1; position: static; padding-top: 0; min-width: 0; }
+  .pro .uw-summary .to-top { display: none; }
+  .pro .uw-summary .to-inputs { display: inline-block; }
+  .pro .uw-body { min-width: 0; }
+  .pro .heats .howto { margin-top: var(--s5); }
+}
+@media (max-width: 600px) {
+  .pro .status > span { white-space: normal; }
+  .pro .field-meta { flex-wrap: nowrap; }
+  .pro .field-meta > span { flex: 0 1 auto; min-width: 0; }
+  /* 라벨·값 44px + 파생 + 메타 3줄 행을 100px 안에 */
+  .pro .field { padding: 8px 0; row-gap: 2px; }
+  .pro .field > .seg-ctl { margin-top: 2px; }
+}
+@media print {
+  .pro .status, .pro .asset-tabs, .pro .basis, .pro .to-inputs { display: none; }
+  .pro .uw-summary { display: none; }
+}

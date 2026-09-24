@@ -1,0 +1,75 @@
+/* RE:LAB · /home 전용 규칙 (DESIGN_SPEC §5.4 · §7 묶음 C).
+   토큰·공통 컴포넌트는 app/globals.css. 여기에는 Home 페이지에만 있는 마크업의 규칙만 둔다.
+   글자 크기는 토큰(11 12 13 15 16 17 22 26 28 36)만 쓴다. */
+
+/* ─── 히어로 status 줄: kicker + 문구를 한 덩어리로 */
+.home-status > span { white-space: nowrap; }
+.home-status .kicker { margin-right: 6px; }
+
+/* ─── 입력열 · 읽기 전용 행(종류 · 빌릴 수 있는 돈) */
+.field.static { align-items: baseline; }
+.field .field-static { grid-column: 2; text-align: right; font-size: var(--t-ui); color: var(--ink); line-height: 1.4; padding: 6px 6px; }
+.field .field-value { grid-column: 2; text-align: right; font-family: var(--mono); font-size: var(--m-md); font-weight: 400; color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; padding: 4px 6px; }
+.field .field-value .u { font-size: var(--t-xs); }
+.field .field-value.neg { color: var(--neg); }
+.field-derived .term-wrap { display: inline; position: relative; }
+
+/* 접힌 그룹 안 안내·근거 줄 */
+.adv .fine { margin: 10px 0 12px; }
+.adv .rule-meta { margin: 8px 0 12px; }
+.adv .field:last-of-type { border-bottom: 0; }
+.uw-inputs > .fine { margin-top: var(--s4); }
+.uw-inputs .basis { padding: 0 0 12px; border-bottom: 1px solid var(--rule-2); margin-bottom: 4px; color: var(--ink-2); }
+.uw-inputs .basis .basis-edited { margin-left: 8px; }
+
+/* ─── 결과열 요약(sticky): 답 4칸 compact + 이동 링크 */
+.uw-summary { min-width: 0; }
+.uw-summary .answers > div { min-width: 0; }
+.uw-summary .answers .q { margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.uw-summary .to-inputs { display: none; }
+.uw-summary .sum-links { margin-top: 6px; font-size: var(--t-sm); }
+.uw-summary .sum-links .to-top { margin-top: 0; }
+
+/* ─── 결과열 본문 */
+.uw-body .notes { margin-top: 0; }
+.uw-body .notice { margin-bottom: var(--s4); }
+.uw-body h3:first-of-type { margin-top: var(--s5); }
+.uw-body .kpis .kpi-value { white-space: normal; }
+.home-years th small { white-space: nowrap; }
+.home-years td.num { white-space: nowrap; }
+.uw-body .checks { margin-top: var(--s3); }
+.uw-body .btn-row { margin-top: var(--s5); }
+
+/* 채우기 확인 notice(절 머리 aside에 인라인) */
+.sec-aside .fill-confirm { margin-bottom: 0; }
+.fill-confirm .link { margin-left: 8px; }
+.uw-inputs .fill-confirm { margin: 0 0 var(--s4); }
+
+/* ─── 모바일: 요약 → 입력 → 나머지 결과 (§5.4) */
+@media (max-width: 860px) {
+  .uw-results { display: contents; }
+  .uw-summary { order: -1; position: static; padding-top: 0; }
+  .uw-summary .to-top { display: none; }
+  .uw-summary .to-inputs { display: inline-block; }
+  .uw-body { min-width: 0; }
+  .home-status > span { white-space: normal; }
+}
+@media (max-width: 600px) {
+  .field .field-value { padding: 4px 4px; }
+  .uw-body .kpis .kpi-value { font-size: var(--m-lg); }
+}
+@media print {
+  .home-status, .uw-summary .sum-links, .to-inputs { display: none; }
+  .uw-summary { border-bottom: 1px solid var(--rule-2); }
+}
+
+/* ─── ≤600 입력 행 높이(§8-13): Seg 버튼 줄바꿈 금지, 파생 줄 안의 링크 패딩 제거, 행 여백 10px */
+@media (max-width: 600px) {
+  #inputs .field { padding: 10px 0; }
+  #inputs .field > .seg-ctl button { white-space: nowrap; padding: 6px 8px; line-height: 1.4; }
+  #inputs .field-derived .link, #inputs .field-meta .link { padding: 0; display: inline; }
+  #inputs .field .field-static { padding: 0 4px; }
+}
+
+/* ─── 파생 줄 안의 줄 구분(대출 금리 감응 · 빌릴 수 있는 돈 풀이): 한 줄씩 block */
+.field-derived .dl { display: block; }
